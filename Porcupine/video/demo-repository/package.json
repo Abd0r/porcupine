@@ -1,0 +1,10 @@
+{
+  "name": "demo-cache-invalidation",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "test:focused": "node --test test/cache.test.js"
+  }
+}
