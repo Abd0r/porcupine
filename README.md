@@ -6,7 +6,7 @@
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-%E2%89%A522.19.0-339933?logo=node.js&logoColor=white" alt="Node.js 22.19+" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white" alt="TypeScript 5.9" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-EA9B34" alt="MIT" /></a>
-  <a href="https://www.npmjs.com/package/porcupineai"><img src="https://img.shields.io/npm/v/porcupineai" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/porcupineai"><img src="https://img.shields.io/npm/v/@porcupineai/porcupineai" alt="npm version" /></a>
 </p>
 
 A terminal coding agent. You describe the goal; it reads your repo, runs commands, edits files, and verifies the result — inside a permission mode you control.
