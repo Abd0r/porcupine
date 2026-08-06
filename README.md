@@ -64,7 +64,7 @@ Reasoning depth is separate from permission: `/reasoning` and `/adaptive` tune t
 - **WoT (Web of Thoughts)** — sub-agents sharing a `peerGroup` message each other and you live; `send_to_subagent` steers any running worker.
 - **MCP client** — connect MCP servers (stdio + Streamable HTTP); tools, resources (`mcp_resources`) and prompts (`/mcpp:`) become first-class. Fail-closed security gate, browser OAuth, OS-keyring tokens.
 - **Autonomous learning** — the agent improves its own skills and memory from real use: evidence-graded proposals, snapshots + auto-rollback, a live feed (`/learning feed`), and a refiner for weak skills.
-- **47 skills across 17 stacks** — from `problem-solving` to `secure-coding`, `root-cause-analysis`, and `autonomous-delegation`.
+- **48 skills across 17 stacks** — from `problem-solving` to `secure-coding`, `root-cause-analysis`, and `autonomous-delegation`.
 - **Dynamic task graph** — the footer tracker animates on every multi-step turn.
 - **Voice** — `/voice on`, push-to-talk with Space.
 - **Tasks & Cron** — durable task templates with attended schedules (`/task`, `/cron`).
