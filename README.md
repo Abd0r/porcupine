@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="porcupine-banner.png" alt="PORCUPINE" width="720" />
+  <img src="Porcupine/packages/coding-agent/assets/porcupine-banner.png" alt="PORCUPINE" width="720" />
 </p>
 
 <p align="center">
