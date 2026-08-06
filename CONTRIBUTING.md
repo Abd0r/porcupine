@@ -32,7 +32,7 @@ The repository root holds the project-level files: `README.md`, `LICENSE`,
 ## Setting up a development environment
 
 ```bash
-git clone https://github.com/Abd0r/porcupine.git
+git clone https://github.com/Abd0r/porcupineai.git
 cd porcupine
 cd Porcupine
 npm install --ignore-scripts
