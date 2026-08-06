@@ -18,7 +18,7 @@ Built on top of [Pi](https://github.com/earendil-works/pi) (MIT), as its own pro
 ## Install
 
 ```bash
-npm install -g porcupineai
+npm install -g @porcupineai/porcupineai
 ```
 
 Requires **Node.js 22.19+**.
