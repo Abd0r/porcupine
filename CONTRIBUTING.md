@@ -18,7 +18,7 @@ The product code lives in the `Porcupine/` folder (a monorepo):
 Porcupine/
 ├── packages/
 │   ├── coding-agent/   # the CLI, TUI, tools, skills, docs
-│   ├── agent/          # agent runtime core (@porcupineai/agent-core)
+│   ├── agent/          # agent runtime core (pi-agent-core)
 │   ├── ai/             # model runtimes and catalogs
 │   ├── tui/            # terminal UI toolkit
 │   └── ...
@@ -32,7 +32,7 @@ The repository root holds the project-level files: `README.md`, `LICENSE`,
 ## Setting up a development environment
 
 ```bash
-git clone https://github.com/Abd0r/porcupineai.git
+git clone https://github.com/Abd0r/porcupine.git
 cd porcupine
 cd Porcupine
 npm install --ignore-scripts
