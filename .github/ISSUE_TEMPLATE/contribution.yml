@@ -1,0 +1,35 @@
+name: Contribution Proposal
+description: Propose a change or feature before submitting a PR
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you start:** Read [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+        Keep this short. If it doesn't fit on one screen, it's too long. Write in your own voice.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want to change?
+      description: Be specific and concise.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: The problem this solves or the capability it adds.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Core agent loop / tools
+        - MCP client / security
+        - Learning / refiner / skills
+        - UI / TUI
+        - Docs / prompts
+        - Packaging / install

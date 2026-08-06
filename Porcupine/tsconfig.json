@@ -1,0 +1,34 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"paths": {
+			"*": ["./*"],
+			"@porcupineai/ai": ["./packages/ai/src/index.ts"],
+			"@porcupineai/ai/oauth": ["./packages/ai/src/oauth.ts"],
+			"@porcupineai/ai/*": ["./packages/ai/src/*.ts", "./packages/ai/src/providers/*.ts"],
+			"@porcupineai/ai/dist/*": ["./packages/ai/src/*"],
+			"@porcupineai/agent-core": ["./packages/agent/src/index.ts"],
+			"@porcupineai/agent-core/*": ["./packages/agent/src/*"],
+			"@porcupineai/storage-sqlite-node": ["./packages/storage/sqlite-node/src/index.ts"],
+			"@porcupineai/coding-agent": ["./packages/coding-agent/src/index.ts"],
+			"@porcupineai/coding-agent/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
+			"@porcupineai/coding-agent/*": ["./packages/coding-agent/src/*"],
+			"@porcupineai/protocol": ["./packages/protocol/src/index.ts"],
+			"@porcupineai/protocol/*": ["./packages/protocol/src/*"],
+			"@porcupineai/client": ["./packages/client/src/index.ts"],
+			"@porcupineai/client/*": ["./packages/client/src/*"],
+			"@earendil-works/pi-server": ["./packages/server/src/index.ts"],
+			"@earendil-works/pi-server/*": ["./packages/server/src/*"],
+			"typebox": ["./node_modules/typebox"],
+			"@porcupineai/tui": ["./packages/tui/src/index.ts"],
+			"@porcupineai/tui/*": ["./packages/tui/src/*"],
+			"@earendil-works/pi-agent-old": ["./packages/agent-old/src/index.ts"],
+			"@earendil-works/pi-agent-old/*": ["./packages/agent-old/src/*"]
+		}
+	},
+	"include": ["packages/*/src/**/*", "packages/*/test/**/*", "packages/storage/*/src/**/*", "packages/storage/*/test/**/*", "packages/coding-agent/examples/**/*"],
+	"exclude": ["**/dist/**", "packages/coding-agent/examples/extensions/gondolin/**"]
+}

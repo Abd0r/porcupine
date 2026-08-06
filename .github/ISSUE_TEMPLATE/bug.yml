@@ -1,0 +1,37 @@
+name: Bug Report
+description: Report something that's broken in Porcupine
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you start:** Read [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+        Keep this short. If it doesn't fit on one screen, it's too long. Write in your own voice.
+
+        **Important:** before reporting a core bug, first validate with `porcupine -ne` (or a clean `~/.porcupine`-less run) that this is not caused by an extension, skill, or project-local setting you loaded.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Be specific. Include error messages if any.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: Steps, or a minimal example. Include which mode (Ask/Normal/Auto), model/provider, and OS if relevant.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / session info
+      description: Paste relevant output or `porcupine --version` + config summary.
