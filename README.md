@@ -60,8 +60,13 @@ Reasoning depth is separate from permission: `/reasoning` and `/adaptive` tune t
 
 ## What's inside
 
-- **Sub-agents** — up to 3 parallel workers (own context, curated tools, step budgets). Reports are injected instantly; Escape cancels. `🧵 Sub-agents 2/3` panel.
-- **WoT (Web of Thoughts)** — sub-agents sharing a `peerGroup` message each other and you live; `send_to_subagent` steers any running worker.
+- **Sub-agents** — up to 3 parallel workers with the whole tool stack (minus
+  agent-level tools), 120-step budgets, and their own model. Reports are
+  injected instantly; the agent can stop workers with `stop_subagent`; Escape
+  cancels all. Live activity animates in the footer beside the thread counter:
+  `🤖(📄 Extracting, 🌐 Searching) • 🧵 0/3 • (opencode-go) …`.
+- **WoT (Web of Thoughts)** — sub-agents sharing a `peerGroup` message each
+  other and you live; `send_to_subagent` steers any running worker.
 - **MCP client** — connect MCP servers (stdio + Streamable HTTP); tools, resources (`mcp_resources`) and prompts (`/mcpp:`) become first-class. Fail-closed security gate, browser OAuth, OS-keyring tokens.
 - **Autonomous learning** — the agent improves its own skills and memory from real use: evidence-graded proposals, snapshots + auto-rollback, a live feed (`/learning feed`), and a refiner for weak skills.
 - **48 skills across 17 stacks** — from `problem-solving` to `secure-coding`, `root-cause-analysis`, and `autonomous-delegation`.
@@ -69,7 +74,18 @@ Reasoning depth is separate from permission: `/reasoning` and `/adaptive` tune t
 - **Voice** — `/voice on`, push-to-talk with Space.
 - **Tasks & Cron** — durable task templates with attended schedules (`/task`, `/cron`).
 - **Projects** — `Project/<name>/` workspaces with README + STATUS.
-- **Telegram bridge** — message the same session from your phone.
+- **Remote bridges** — drive the same session from your phone or chat:
+  Telegram (`PORCUPINE_TELEGRAM_TOKEN`), Discord (`PORCUPINE_DISCORD_TOKEN`), or
+  iMessage (macOS, `PORCUPINE_IMESSAGE_ALLOW`). Confirmations race the TUI with
+  buttons/reactions — first response wins.
+- **`/sandbox`** — one command routes built-in tools into a Gondolin micro-VM
+  (`on` installs + hot-reloads; `status` checks Node/QEMU/VM state).
+- **`--headless`** — CI-friendly task mode: run a prompt to completion, print
+  the report, exit 0 on success / 1 on error.
+- **Updates & sync** — startup check (npm/GitHub, 24h cache) shows
+  `🆕 vX.Y.Z available` beside the version; `/update` and `porcupine update
+  [--yes]` install it; `porcupine sync [--force]` refreshes the shipped
+  agent-home files without clobbering your edits.
 
 ## Safety
 
@@ -81,6 +97,7 @@ Read [Security](Porcupine/packages/coding-agent/docs/security.md) and [Container
 
 - [Full index](Porcupine/packages/coding-agent/docs/index.md)
 - [Quickstart](Porcupine/packages/coding-agent/docs/quickstart.md) · [Usage](Porcupine/packages/coding-agent/docs/usage.md) · [Settings](Porcupine/packages/coding-agent/docs/settings.md)
+- [Stacks](Porcupine/packages/coding-agent/docs/stacks.md) · [Sub-agents](Porcupine/packages/coding-agent/docs/subagents.md)
 - [MCP](Porcupine/packages/coding-agent/docs/mcp.md) · [Skills](Porcupine/packages/coding-agent/docs/skills.md) · [Extensions](Porcupine/packages/coding-agent/docs/extensions.md)
 - [Sessions](Porcupine/packages/coding-agent/docs/sessions.md)
 
