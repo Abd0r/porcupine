@@ -86,15 +86,19 @@ export class FooterComponent implements Component {
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
 	private getTaskGraph?: () => TaskGraphView | undefined;
+	/** Live animated sub-agent chip frame ("🤖(📄 Extracting, 🌐 Searching)"), from interactive-mode. */
+	private getSubagentChip?: () => string | undefined;
 
 	constructor(
 		session: AgentSession,
 		footerData: ReadonlyFooterDataProvider,
 		getTaskGraph?: () => TaskGraphView | undefined,
+		getSubagentChip?: () => string | undefined,
 	) {
 		this.session = session;
 		this.footerData = footerData;
 		this.getTaskGraph = getTaskGraph;
+		this.getSubagentChip = getSubagentChip;
 	}
 
 	setSession(session: AgentSession): void {
@@ -244,6 +248,22 @@ export class FooterComponent implements Component {
 				// Too wide, fall back
 				rightSide = rightSideWithoutProvider;
 			}
+		}
+
+		// Live sub-agent chip + thread counter to the LEFT of the provider/model:
+		// "🤖(📄 Extracting, 🌐 Searching) • 🧵 0/3 • (opencode-go) …" — the animated
+		// chip comes from interactive-mode (frame cycles while workers run).
+		const rightParts: string[] = [];
+		const subagentChip = this.getSubagentChip?.();
+		if (subagentChip) rightParts.push(subagentChip);
+		const subagentState = this.session.subagentState;
+		if (subagentState && subagentState.capacity > 0) {
+			const runningSubagents = subagentState.runs.filter((run) => run.status === "running").length;
+			rightParts.push(`🧵 ${runningSubagents}/${subagentState.capacity}`);
+		}
+		if (rightSide) rightParts.push(rightSide);
+		if (rightParts.length > 0) {
+			rightSide = rightParts.join(" • ");
 		}
 
 		const rightSideWidth = visibleWidth(rightSide);

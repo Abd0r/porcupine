@@ -60,11 +60,11 @@ interface TelegramUpdate {
 const API = "https://api.telegram.org/bot";
 
 /**
- * Match a pending Telegram prompt against the turn's last user message.
+ * Match a pending remote prompt against the turn's last user message.
  * Exact match after trimming; also accept the prompt appearing as its own line
  * (skill/template expansion may embed or repeat the raw text).
  */
-function textsMatch(prompt: string, turnText: string): boolean {
+export function textsMatch(prompt: string, turnText: string): boolean {
 	const a = prompt.trim();
 	const b = turnText.trim();
 	if (a === b) return true;
@@ -73,7 +73,7 @@ function textsMatch(prompt: string, turnText: string): boolean {
 }
 
 /** Text of the LAST user message in a session (the one that started the turn). */
-function lastUserMessageText(messages: readonly AgentMessage[]): string | undefined {
+export function lastUserMessageText(messages: readonly AgentMessage[]): string | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message?.role !== "user") continue;
@@ -220,6 +220,13 @@ export class TelegramBridge {
 		}
 		if (decisions.length === 0) return false;
 		return Promise.race(decisions);
+	}
+
+	/** Remote-only confirmation (no TUI): Telegram buttons on the active chat. */
+	remoteConfirm(title: string, message: string): Promise<boolean> | undefined {
+		const chatId = this.activeChatId;
+		if (chatId === undefined) return undefined;
+		return this.telegramConfirm(chatId, title, message);
 	}
 
 	/** Point the session's confirm callback at the combined TUI+Telegram flow. */

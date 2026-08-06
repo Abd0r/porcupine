@@ -36,6 +36,7 @@ export interface Args {
 	extensions?: string[];
 	noExtensions?: boolean;
 	print?: boolean;
+	headless?: boolean;
 	export?: string;
 	noSkills?: boolean;
 	skills?: string[];
@@ -141,6 +142,15 @@ export function parseArgs(args: string[]): Args {
 			}
 		} else if (arg === "--print" || arg === "-p") {
 			result.print = true;
+			const next = args[i + 1];
+			if (next !== undefined && !next.startsWith("@") && (!next.startsWith("-") || next.startsWith("---"))) {
+				result.messages.push(next);
+				i++;
+			}
+		} else if (arg === "--headless") {
+			// Headless task mode: run the prompt to completion, print the final
+			// report, exit 0 on success / 1 on error or abort (CI-friendly).
+			result.headless = true;
 			const next = args[i + 1];
 			if (next !== undefined && !next.startsWith("@") && (!next.startsWith("-") || next.startsWith("---"))) {
 				result.messages.push(next);
@@ -261,6 +271,8 @@ ${chalk.bold("Options:")}
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
   --mode <mode>                  Output mode: text (default), json, or rpc
   --print, -p                    Non-interactive mode: process prompt and exit
+  --headless                      Headless task mode: run prompt to completion, print
+                                  final report, exit 0 on success / 1 on error (CI)
   --continue, -c                 Continue previous session
   --resume, -r                   Select a session to resume
   --session <path|id>            Use specific session file or partial UUID

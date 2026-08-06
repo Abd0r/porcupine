@@ -87,6 +87,9 @@ These variables are read by Porcupine itself:
 | `PORCUPINE_HARDWARE_CURSOR` (legacy `PI_HARDWARE_CURSOR`) | Set to `1` to show the hardware cursor; see [Terminal setup](terminal-setup.md) |
 | `PORCUPINE_TELEGRAM_TOKEN` | Bot token from @BotFather; when set, the interactive TUI starts the Telegram bridge (messages mirror into the shared session)
 | `PORCUPINE_TELEGRAM_ALLOW` | Comma-separated chat ids allowed to talk to the bridge; empty allowlist means only `/start` responds (it reports the chat id to authorize) |
+| `PORCUPINE_DISCORD_TOKEN` | Discord bot token; when set, the interactive TUI starts the Discord bridge (messages mirror into the shared session) |
+| `PORCUPINE_DISCORD_ALLOW` | Comma-separated channel ids allowed to talk to the Discord bridge |
+| `PORCUPINE_IMESSAGE_ALLOW` | Comma-separated chat ids (or phone/email handles) allowed to talk to the iMessage bridge (macOS only) |
 | `VISUAL`, `EDITOR` | External editor fallback when `externalEditor` is unset |
 | `HTTP_PROXY`, `HTTPS_PROXY` | Proxy outbound HTTP requests |
 
@@ -98,5 +101,5 @@ At CLI startup Porcupine loads `<agent home>/.env` (usually
 `~/.porcupine/agent/.env`) with dotenv semantics: `KEY=VALUE` lines, `#`
 comments, single/double quotes, and an optional `export` prefix. Variables
 already set in the shell environment win over the file. This is the
-recommended place for `PORCUPINE_TELEGRAM_TOKEN` and
-`PORCUPINE_TELEGRAM_ALLOW` — keep the file `chmod 600` and never commit it.
+recommended place for `PORCUPINE_TELEGRAM_TOKEN`,
+`PORCUPINE_DISCORD_TOKEN`, and their allowlists — keep the file `chmod 600` and never commit it.

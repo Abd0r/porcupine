@@ -82,6 +82,10 @@ function createSession(options: {
 		modelRuntime: {
 			isUsingOAuth: () => false,
 		},
+		subagentState: {
+			runs: [],
+			capacity: 3,
+		},
 		interactionMode: options.interactionMode ?? "normal",
 	};
 
@@ -127,6 +131,19 @@ describe("FooterComponent width handling", () => {
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
+	});
+
+	it("renders sub-agent chip • thread counter left of the provider/model", () => {
+		const session = createSession({ sessionName: "", modelId: "deepseek-v4-flash", provider: "opencode-go" });
+		const footer = new FooterComponent(
+			session,
+			createFooterData(2),
+			undefined,
+			() => "🤖(📄 Extracting, 🌐 Searching)",
+		);
+		const lines = footer.render(200);
+		const stats = stripAnsi(lines[1]);
+		expect(stats).toContain("🤖(📄 Extracting, 🌐 Searching) • 🧵 0/3 • (opencode-go)");
 	});
 
 	it("keeps stats line within width for wide model and provider names", () => {

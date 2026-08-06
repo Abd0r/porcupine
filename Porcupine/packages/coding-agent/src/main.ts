@@ -24,6 +24,7 @@ import { listModels } from "./cli/list-models.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import { selectSession } from "./cli/session-picker.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup, showStartupSelector } from "./cli/startup-ui.ts";
+import { runSyncCommand, runUpdateCommand } from "./cli/update-command.ts";
 import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
@@ -115,7 +116,7 @@ function resolveAppMode(parsed: Args, stdinIsTTY: boolean, stdoutIsTTY: boolean)
 	if (parsed.mode === "json") {
 		return "json";
 	}
-	if (parsed.print || !stdinIsTTY || !stdoutIsTTY) {
+	if (parsed.print || parsed.headless || !stdinIsTTY || !stdoutIsTTY) {
 		return "print";
 	}
 	return "interactive";
@@ -126,7 +127,12 @@ function toPrintOutputMode(appMode: AppMode): Exclude<Mode, "rpc"> {
 }
 
 function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
-	return !parsed.print && parsed.mode === undefined && (parsed.help === true || parsed.listModels !== undefined);
+	return (
+		!parsed.print &&
+		!parsed.headless &&
+		parsed.mode === undefined &&
+		(parsed.help === true || parsed.listModels !== undefined)
+	);
 }
 
 async function runCredentialPrintCommand(args: string[]): Promise<boolean> {
@@ -558,6 +564,14 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 
 	if (await runCredentialPrintCommand(args)) {
+		return;
+	}
+
+	if (await runUpdateCommand(args)) {
+		return;
+	}
+
+	if (await runSyncCommand(args)) {
 		return;
 	}
 

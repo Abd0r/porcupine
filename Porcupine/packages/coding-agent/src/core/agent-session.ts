@@ -13,8 +13,9 @@
  * Modes use this class and add their own I/O layer on top.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import type {
 	Agent,
 	AgentEvent,
@@ -328,6 +329,10 @@ export interface SubagentRunInfo {
 	status: "running" | "done" | "cancelled" | "failed";
 	steps: number;
 	lastTool?: string;
+	/** Args of the last tool call, so the UI can render "Reading skill: X" etc. */
+	lastToolArgs?: unknown;
+	/** What the sub-agent is doing right now: a tool call, or thinking between turns. */
+	phase?: "tool" | "thinking";
 }
 
 export class AgentSession {
@@ -459,10 +464,15 @@ export class AgentSession {
 			if (run) {
 				run.steps = event.step;
 				run.lastTool = event.toolName;
+				run.lastToolArgs = event.args;
+				run.phase = "tool";
 			}
 		} else if (event.type === "turn" && event.subagentId) {
 			const run = this._subagentRuns.get(event.subagentId);
-			if (run) run.steps = event.step;
+			if (run) {
+				run.steps = event.step;
+				run.phase = "thinking";
+			}
 		} else if (event.type === "done") {
 			this._activeSubagentRuns = Math.max(0, this._activeSubagentRuns - 1);
 			if (event.subagentId) {
@@ -476,8 +486,20 @@ export class AgentSession {
 		for (const listener of [...this._subagentListeners]) {
 			try {
 				listener(event);
-			} catch {
-				// TUI listeners must never break the agent turn.
+			} catch (error) {
+				// TUI listeners must never break the agent turn — but a swallowed
+				// exception would silently kill UI updates (e.g. the sub-agent chip),
+				// so record it where it can be diagnosed.
+				try {
+					appendFileSync(
+						join(homedir(), ".porcupine", "agent", "ui-listener-errors.log"),
+						`${new Date().toISOString()} event=${event.type} listeners=${this._subagentListeners.size} error=${
+							error instanceof Error ? error.message : String(error)
+						}\n`,
+					);
+				} catch {
+					// logging must never throw either
+				}
 			}
 		}
 	}
@@ -3227,6 +3249,15 @@ export class AgentSession {
 					sendToSubagent: {
 						send: (to, text) => this.sendMessageToSubagent(to, text),
 						getActiveIds: () => [...this._subagentSteerers.keys()],
+					},
+					stopSubagent: {
+						stop: (id) => this.cancelSubagent(id),
+						stopAll: () => {
+							const before = this._subagentCancellers.size;
+							this.cancelAllSubagents();
+							return before;
+						},
+						getActiveIds: () => [...this._subagentCancellers.keys()],
 					},
 					mcpResources: {
 						list: (serverKey) => this._ensureMcpManager().listResources(serverKey),

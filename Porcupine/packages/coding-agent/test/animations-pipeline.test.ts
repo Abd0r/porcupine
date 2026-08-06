@@ -30,6 +30,19 @@ describe("animation pipeline (live integration proof)", () => {
 		);
 	});
 
+	it("capability_search without kind infers skill/tool chips from the query", () => {
+		expect(resolveToolActivity("capability_search", { action: "search", query: "skill:subagent" })?.id).toBe(
+			"searching-skills",
+		);
+		expect(resolveToolActivity("capability_search", { action: "search", query: "find a skill for git" })?.id).toBe(
+			"searching-skills",
+		);
+		expect(resolveToolActivity("capability_search", { action: "search", query: "which tool reads files" })?.id).toBe(
+			"searching-tools",
+		);
+		expect(resolveToolActivity("capability_search", { action: "search", query: "stacks" })?.id).toBe("searching");
+	});
+
 	it("WorkingStatusIndicator renders animated frames + ticks", () => {
 		initTheme();
 		vi.useFakeTimers();
@@ -37,7 +50,7 @@ describe("animation pipeline (live integration proof)", () => {
 		const indicator = new WorkingStatusIndicator(tui, "", animationLoaderOptions("reading", "git-basics"));
 		indicator.start();
 		const lines1 = indicator.render(80);
-		expect(lines1.join("\n")).toContain("📖  Reading: git-basics");
+		expect(lines1.join("\n")).toContain("📖 Reading: git-basics");
 		expect(renders.n).toBeGreaterThan(0);
 		vi.advanceTimersByTime(700);
 		const lines2 = indicator.render(80);
@@ -49,6 +62,6 @@ describe("animation pipeline (live integration proof)", () => {
 	it("frames contain the emoji + label + animated dots", () => {
 		const frames = buildDotFrames("🔎", "Searching for skills");
 		expect(frames.length).toBeGreaterThan(1);
-		expect(frames[0]).toContain("🔎  Searching for skills");
+		expect(frames[0]).toContain("🔎 Searching for skills");
 	});
 });

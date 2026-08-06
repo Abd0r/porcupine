@@ -1,9 +1,11 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	checkForNewPiVersion,
 	comparePackageVersions,
 	getLatestPiRelease,
-	getLatestPiVersion,
 	isNewerPackageVersion,
 } from "../src/utils/version-check.ts";
 import { allowNetwork } from "./test-network-env.ts";
@@ -11,16 +13,34 @@ import { allowNetwork } from "./test-network-env.ts";
 const originalSkipVersionCheck = process.env.PORCUPINE_SKIP_VERSION_CHECK;
 const originalLegacySkipVersionCheck = process.env.PI_SKIP_VERSION_CHECK;
 const originalVersionCheckUrl = process.env.PORCUPINE_LATEST_VERSION_URL;
+const originalUpdateCachePath = process.env.PORCUPINE_UPDATE_CACHE_PATH;
+
+function clearVersionCache() {
+	const cachePath =
+		process.env.PORCUPINE_UPDATE_CACHE_PATH ?? join(homedir(), ".porcupine", "agent", "version-cache.json");
+	try {
+		rmSync(cachePath);
+	} catch {
+		// ignore missing cache
+	}
+}
 
 beforeEach(() => {
 	allowNetwork();
 	process.env.PORCUPINE_LATEST_VERSION_URL = "https://releases.example.test/api/latest-version";
+	// Isolate the update cache so tests never read each other's cached results.
+	process.env.PORCUPINE_UPDATE_CACHE_PATH = join(
+		mkdtempSync(join(tmpdir(), "porcupine-version-cache-")),
+		"version-cache.json",
+	);
+	clearVersionCache();
 	delete process.env.PORCUPINE_SKIP_VERSION_CHECK;
 	delete process.env.PI_SKIP_VERSION_CHECK;
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+	clearVersionCache();
 	if (originalSkipVersionCheck === undefined) {
 		delete process.env.PORCUPINE_SKIP_VERSION_CHECK;
 	} else {
@@ -35,6 +55,11 @@ afterEach(() => {
 		delete process.env.PORCUPINE_LATEST_VERSION_URL;
 	} else {
 		process.env.PORCUPINE_LATEST_VERSION_URL = originalVersionCheckUrl;
+	}
+	if (originalUpdateCachePath === undefined) {
+		delete process.env.PORCUPINE_UPDATE_CACHE_PATH;
+	} else {
+		process.env.PORCUPINE_UPDATE_CACHE_PATH = originalUpdateCachePath;
 	}
 });
 
@@ -60,7 +85,7 @@ describe("version checks", () => {
 		const fetchMock = vi.fn(async () => Response.json({ version: "1.2.4" }));
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(getLatestPiVersion("1.2.3")).resolves.toBe("1.2.4");
+		await expect(getLatestPiRelease("1.2.3")).resolves.toMatchObject({ version: "1.2.4" });
 		expect(fetchMock).toHaveBeenCalledWith(
 			"https://releases.example.test/api/latest-version",
 			expect.objectContaining({
@@ -72,13 +97,14 @@ describe("version checks", () => {
 		);
 	});
 
-	it("skips network calls when no version check URL is configured", async () => {
+	it("falls back to the npm registry when no version check URL is configured", async () => {
 		delete process.env.PORCUPINE_LATEST_VERSION_URL;
-		const fetchMock = vi.fn();
+		const fetchMock = vi.fn(async () => Response.json({ version: "1.2.4" }));
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(getLatestPiVersion("1.2.3")).resolves.toBeUndefined();
-		expect(fetchMock).not.toHaveBeenCalled();
+		await expect(getLatestPiRelease("1.2.3")).resolves.toMatchObject({ version: "1.2.4" });
+		// Without a URL, the installed package name is looked up on the npm registry.
+		expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("registry.npmjs.org"), expect.anything());
 	});
 
 	it("returns the active package metadata from the version check api", async () => {
@@ -117,7 +143,7 @@ describe("version checks", () => {
 		const fetchMock = vi.fn(async () => Response.json({ version: "1.2.4" }));
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(getLatestPiVersion("1.2.3")).resolves.toBe("1.2.4");
+		await expect(getLatestPiRelease("1.2.3")).resolves.toMatchObject({ version: "1.2.4" });
 		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 });

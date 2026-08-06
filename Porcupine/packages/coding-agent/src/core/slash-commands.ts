@@ -102,6 +102,15 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "[on|off|status]",
 	},
 	{
+		name: "sandbox",
+		description: "Sandbox mode: route built-in tools into a Gondolin micro-VM",
+		argumentHint: "[on|off|status]",
+	},
+	{
+		name: "update",
+		description: "Check for a newer Porcupine release and show how to install it",
+	},
+	{
 		name: "modes",
 		description: "Choose Ask, Normal, or Auto interaction mode",
 	},

@@ -135,6 +135,8 @@ export interface Settings {
 	collapseChangelog?: boolean; // Show condensed changelog after update (use /changelog for full)
 	enableInstallTelemetry?: boolean; // default: true - anonymous version/update ping after changelog-detected updates
 	enableAnalytics?: boolean; // default: false - opt-in analytics data sharing
+	updateCheck?: boolean; // default: true - check npm/GitHub for a newer release and show "🆕 update available"
+	updateCheckIntervalHours?: number; // default: 24 - cache duration between update checks
 	trackingId?: string; // analytics tracking identifier, generated when analytics is enabled
 	packages?: PackageSource[]; // Array of npm/git package sources (string or object with filtering)
 	extensions?: string[]; // Array of local extension file paths or directories
@@ -1008,6 +1010,16 @@ export class SettingsManager {
 		this.globalSettings.enableInstallTelemetry = enabled;
 		this.markModified("enableInstallTelemetry");
 		this.save();
+	}
+
+	getUpdateCheck(): boolean {
+		return this.settings.updateCheck ?? true;
+	}
+
+	getUpdateCheckIntervalMs(): number {
+		const hours = this.settings.updateCheckIntervalHours ?? 24;
+		const ms = Math.max(1, hours) * 60 * 60 * 1000;
+		return Number.isFinite(ms) ? ms : 24 * 60 * 60 * 1000;
 	}
 
 	getEnableAnalytics(): boolean {

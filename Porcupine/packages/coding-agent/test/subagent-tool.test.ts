@@ -1,6 +1,6 @@
 import type { AgentTool } from "@porcupineai/agent-core";
 import { describe, expect, it } from "vitest";
-import { createSubagentToolDefinition } from "../src/core/tools/subagent.ts";
+import { createStopSubagentToolDefinition, createSubagentToolDefinition } from "../src/core/tools/subagent.ts";
 
 function noopTool(name: string): AgentTool<any> {
 	return {
@@ -25,6 +25,45 @@ function makeTool(options: Partial<Parameters<typeof createSubagentToolDefinitio
 		...options,
 	});
 }
+
+describe("stop_subagent tool", () => {
+	const stopTool = createStopSubagentToolDefinition({
+		stop: (id) => id === "sa-1",
+		stopAll: () => 2,
+		getActiveIds: () => ["sa-1", "sa-2"],
+	});
+
+	it("stops a single sub-agent by id", async () => {
+		const result = await stopTool.execute("id", { id: "sa-1" }, undefined, undefined, undefined as never);
+		const text = result.content
+			.filter((part) => part.type === "text")
+			.map((part) => part.text)
+			.join("\n");
+		expect(text).toContain("⏹ Stopped sub-agent sa-1");
+		expect(result.details).toMatchObject({ stopped: 1 });
+	});
+
+	it("reports when the id is not running and lists active ids", async () => {
+		const result = await stopTool.execute("id", { id: "sa-9" }, undefined, undefined, undefined as never);
+		const text = result.content
+			.filter((part) => part.type === "text")
+			.map((part) => part.text)
+			.join("\n");
+		expect(text).toContain('No running sub-agent "sa-9"');
+		expect(text).toContain("sa-1, sa-2");
+		expect(result.details).toMatchObject({ stopped: 0 });
+	});
+
+	it("stops all running sub-agents when id is omitted", async () => {
+		const result = await stopTool.execute("id", {}, undefined, undefined, undefined as never);
+		const text = result.content
+			.filter((part) => part.type === "text")
+			.map((part) => part.text)
+			.join("\n");
+		expect(text).toContain("Stopped 2 sub-agents");
+		expect(result.details).toMatchObject({ stopped: 2 });
+	});
+});
 
 describe("subagent tool", () => {
 	it("rejects when another sub-agent is already running", async () => {

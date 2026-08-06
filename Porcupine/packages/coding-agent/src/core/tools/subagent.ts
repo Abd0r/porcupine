@@ -21,7 +21,7 @@ export interface SubagentToolOptions {
 	getApiKey?: () => ((provider: string) => Promise<string | undefined> | string | undefined) | undefined;
 	/** Live sub-agent settings from settings.json. */
 	getSettings: () => SubagentToolSettings;
-	/** Called for every progress event so the TUI can render the sub-agent panel. */
+	/** Called for every progress event so the TUI can render the footer activity chip. */
 	onEvent?: (event: SubagentProgressEvent) => void;
 	/** True when the sub-agent capacity (maxConcurrent) is reached. */
 	getActiveSubagentRuns?: () => number;
@@ -38,8 +38,14 @@ export interface SubagentToolOptions {
 }
 
 /**
- * Tools the sub-agent is allowed to use. Deliberately excludes interactive and
- * agent-level tools (ask_question, computer_use, tasks, projects, subagent).
+ * Tools the sub-agent is allowed to use — the whole stack minus interactive
+ * and agent-level tools:
+ * - subagent: no recursion (a sub-agent must never spawn sub-agents)
+ * - ask_question: workers cannot ask the user
+ * - computer_use: GUI control is attended-only by design
+ * - tasks / projects: agent-level durable state owned by the main agent
+ * Skills are reachable via capability_search + read, so sub-agents get the
+ * full skill catalog and can match main-agent performance.
  */
 const SUBAGENT_TOOL_NAMES = [
 	"read",
@@ -51,6 +57,9 @@ const SUBAGENT_TOOL_NAMES = [
 	"edit",
 	"web_search",
 	"web_extract",
+	"capability_search",
+	"session_search",
+	"mcp_resources",
 	"memory",
 	"literature",
 ] as const;
@@ -101,6 +110,7 @@ const SUBAGENT_SYSTEM_PROMPT = `You are a Porcupine sub-agent: a focused, dispos
 
 Rules:
 - Complete the assigned task using the tools provided. Work autonomously and efficiently.
+- You have the whole Porcupine stack: filesystem, discovery, shell, web, vcs, build, debug, data, sci, ml, docs, and more. Use capability_search to discover tools and skills, and read a SKILL.md to follow its procedure — never guess.
 - Prefer concrete file paths and verified command output. Never invent files, symbols, or test output.
 - Keep your report concise: state what was done, key findings, and exact file paths touched.
 - Stop as soon as the task is complete. Do not gold-plate — every extra step spends budget.
@@ -157,13 +167,14 @@ export function createSubagentToolDefinition(options: SubagentToolOptions): Tool
 		name: "subagent",
 		label: "subagent",
 		description:
-			"Start a focused sub-agent in the background: fresh context window (128K–256K), curated tool set, hard step budget. Returns IMMEDIATELY with an id — the main agent keeps working while the sub-agent runs. When the sub-agent finishes, its report is injected into the session INSTANTLY: steered into the running turn if you are mid-task, or a fresh turn is started if you are idle — the report lands in your context without waiting for the next user prompt. Up to subagent.maxConcurrent run at a time (default 3). WoT (Web of Thoughts): assign the same peerGroup to sub-agents that should message each other (and you) live; use send_to_subagent to steer a running sub-agent yourself.",
+			"Start a focused sub-agent in the background: fresh context window (128K–256K), the full tool stack minus agent-level tools (no sub-spawning, no GUI, no user questions), hard step budget. Returns IMMEDIATELY with an id — the main agent keeps working while the sub-agent runs. When the sub-agent finishes, its report is injected into the session INSTANTLY: steered into the running turn if you are mid-task, or a fresh turn is started if you are idle — the report lands in your context without waiting for the next user prompt. Up to subagent.maxConcurrent run at a time (default 3). WoT (Web of Thoughts): assign the same peerGroup to sub-agents that should message each other (and you) live; use send_to_subagent to steer a running sub-agent yourself.",
 		promptSnippet: "Spawn an isolated sub-agent for a focused task",
 		promptGuidelines: [
 			"Use subagent for self-contained work that would otherwise pollute the main context (long research, big refactors, multi-file drafts).",
 			"Give an exact task: input paths/URLs, what to produce, and where to put results. Add notes for constraints.",
 			"subagent returns immediately and runs in the background: continue your own work, and the report is injected into your context the moment it finishes (steer if mid-turn, fresh turn if idle) — then fold the result into your work.",
 			"The sub-agent shares your cwd, permission policy, and safety gates. It cannot spawn sub-agents and cannot ask the user questions.",
+			"You can STOP a running sub-agent directly with stop_subagent (by id, or all of them) when it is stuck, off-track, or no longer needed — a stopped run reports '\u23f9 cancelled'. The user can also cancel all running sub-agents with Escape on an empty editor. Run abort always stops a runaway sub-agent at its budget.",
 			"Up to subagent.maxConcurrent sub-agents run at a time (default 3; set it in settings or just ask).",
 			"WoT: pass the same peerGroup to sub-agents that should talk to each other and to you; use send_to_subagent to steer a running sub-agent. Default (no group) = fully isolated.",
 			"It runs on its own model (cheap by default, set via subagent.model).",
@@ -215,7 +226,8 @@ export function createSubagentToolDefinition(options: SubagentToolOptions): Tool
 			const controller = new AbortController();
 
 			const emit = (event: SubagentProgressEvent) => {
-				// Progress goes to the dedicated sub-agent channel (TUI panel). Never
+				// Progress goes to the dedicated sub-agent channel (footer activity
+				// chip + thread counter). Never
 				// forward via onUpdate — the TUI treats onUpdate as a partial tool
 				// result and would crash rendering content-less progress events.
 				options.onEvent?.({ ...event, subagentId: id });
@@ -357,6 +369,64 @@ export function createUnavailableSendToSubagentToolDefinition(): ToolDefinition 
 		}),
 		async execute() {
 			return textResult("Sub-agent messaging is not available in this context.", { ok: false });
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Main agent → stop running sub-agents
+// ---------------------------------------------------------------------------
+
+export interface StopSubagentToolOptions {
+	/** Stop one sub-agent by id. False when it already settled. */
+	stop: (id: string) => boolean;
+	/** Stop ALL running sub-agents; returns how many were stopped. */
+	stopAll: () => number;
+	/** Live running sub-agent ids (for the error message). */
+	getActiveIds: () => string[];
+}
+
+/** Main agent → running sub-agents: stop one or all immediately (cancels the run). */
+export function createStopSubagentToolDefinition(options: StopSubagentToolOptions): ToolDefinition {
+	return {
+		name: "stop_subagent",
+		label: "stop_subagent",
+		description:
+			"Stop one or all running sub-agents immediately. Pass `id` to stop a single worker, or omit it to stop ALL. A stopped run reports '⏹ cancelled' instead of completing — use it when a worker is stuck, off-track, or no longer needed. Only works for sub-agents spawned earlier in this session.",
+		parameters: Type.Object({
+			id: Type.Optional(
+				Type.String({ description: "Sub-agent id to stop (e.g. sa-...). Omit to stop ALL running sub-agents." }),
+			),
+		}),
+		async execute(_toolCallId: string, params: unknown) {
+			const args = params as { id?: string };
+			if (args.id) {
+				if (!options.stop(args.id)) {
+					const active = options.getActiveIds();
+					return textResult(`No running sub-agent "${args.id}". Active: ${active.join(", ") || "none"}.`, {
+						stopped: 0,
+					});
+				}
+				return textResult(`⏹ Stopped sub-agent ${args.id}.`, { stopped: 1 });
+			}
+			const count = options.stopAll();
+			return textResult(
+				count > 0 ? `⏹ Stopped ${count} sub-agent${count === 1 ? "" : "s"}.` : "No running sub-agents to stop.",
+				{ stopped: count },
+			);
+		},
+	};
+}
+
+/** Fallback for contexts without a session. */
+export function createUnavailableStopSubagentToolDefinition(): ToolDefinition {
+	return {
+		name: "stop_subagent",
+		label: "stop_subagent",
+		description: "Stop one or all running sub-agents (cancels their run).",
+		parameters: Type.Object({ id: Type.Optional(Type.String()) }),
+		async execute() {
+			return textResult("Sub-agents are not available in this context.", { stopped: 0 });
 		},
 	};
 }

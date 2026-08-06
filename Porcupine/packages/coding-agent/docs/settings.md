@@ -57,6 +57,8 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `defaultProjectTrust` | string | `"ask"` | Fallback project trust behavior: `"ask"`, `"always"`, or `"never"`. Global setting only |
 | `collapseChangelog` | boolean | `false` | Show condensed changelog after updates |
 | `enableInstallTelemetry` | boolean | `true` | Send an anonymous install/update version ping after first install or changelog-detected updates. This does not control update checks |
+| `updateCheck` | boolean | `true` | Check npm/GitHub for a newer release on startup and show `🆕 update available` beside the version |
+| `updateCheckIntervalHours` | number | `24` | How long to cache the update check before re-fetching |
 | `enableAnalytics` | boolean | `false` | Opt-in analytics data sharing. Currently only asked for during the experimental first-time setup (`PORCUPINE_EXPERIMENTAL=1`) |
 | `trackingId` | string | - | Analytics tracking identifier, generated when `enableAnalytics` is turned on |
 | `doubleEscapeAction` | string | `"tree"` | Action for double-escape: `"tree"`, `"fork"`, or `"none"` |
@@ -142,7 +144,7 @@ Omit `reserveTokens` and `keepRecentTokens` to use the 80/20 rule (compact at 80
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `subagent.model` | string | unset (parent model) | Provider/model spec for sub-agents, e.g. `opencode-go/deepseek-v4-flash` (cheap/small model recommended) |
-| `subagent.maxSteps` | number | `30` | Maximum tool-call steps per sub-agent run |
+| `subagent.maxSteps` | number | `120` | Maximum tool-call steps per sub-agent run |
 | `subagent.contextWindow` | number | `256000` | Sub-agent context window in tokens (clamped 128K–256K) |
 | `subagent.maxConcurrent` | number | `3` | Maximum concurrent sub-agents (default 3) |
 

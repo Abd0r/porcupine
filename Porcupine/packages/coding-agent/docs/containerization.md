@@ -21,7 +21,13 @@ Extensions run wherever the `porcupine` process runs. If you run host `porcupine
 [Gondolin](https://github.com/earendil-works/gondolin) is a local Linux micro-VM.
 Use the [example extension](../examples/extensions/gondolin) when you want `porcupine` on the host but all built-in tools routed into the VM.
 
-Setup:
+**One-command activation:** run `/sandbox on` inside the interactive TUI. It
+copies the bundled Gondolin extension to `~/.porcupine/agent/extensions/gondolin`,
+installs `@earendil-works/gondolin` there, registers it in settings, and
+hot-reloads — no manual copying. `/sandbox status` checks requirements (Node
+>= 23.6, QEMU, VM state) and `/sandbox off` unregisters it.
+
+Manual setup (equivalent):
 
 ```bash
 cp -R packages/coding-agent/examples/extensions/gondolin ~/.porcupine/agent/extensions/gondolin

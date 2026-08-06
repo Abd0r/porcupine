@@ -52,6 +52,7 @@ import {
 	getAuthPath,
 	getDebugLogPath,
 	getDocsPath,
+	getPackageDir,
 	getShareViewerUrl,
 	VERSION,
 } from "../../config.ts";
@@ -100,7 +101,9 @@ import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
 import {
 	type AnimationId,
+	type AnimationLoaderOptions,
 	animationLoaderOptions,
+	DOT_FRAMES,
 	formatAnimationMessage,
 	getAnimation,
 	isToolDrivenAnimation,
@@ -158,6 +161,8 @@ function extractTextFromAssistantMessage(message: {
 		.trim();
 }
 
+import { DiscordBridge } from "../../porcupine/discord-bridge.ts";
+import { IMessageBridge } from "../../porcupine/imessage-bridge.ts";
 import { formatStacksCommandOutput } from "../../porcupine/stacks.ts";
 import {
 	isTaskDrainEligible,
@@ -179,7 +184,7 @@ import { getCwdRelativePath } from "../../utils/paths.ts";
 import { getPorcupineUserAgent } from "../../utils/pi-user-agent.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
-import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import { checkForNewPiVersion, getInstalledPackageName, type LatestPiRelease } from "../../utils/version-check.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { ArtifactChangeComponent } from "./components/artifact-change.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
@@ -223,7 +228,6 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
-import { SubagentPanelComponent } from "./components/subagent-panel.ts";
 import { TaskGraphComponent } from "./components/task-graph.ts";
 import {
 	formatReasoningModeLabel,
@@ -466,6 +470,28 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TUI {
 	return new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);
 }
 
+/**
+ * Minimal surface every remote bridge (Telegram / Discord / iMessage) exposes
+ * so the interactive mode can race confirm/select/input across all channels
+ * and forward terminal responses to whichever bridge started the turn.
+ */
+interface RemoteBridgeLike {
+	isRunning: boolean;
+	remoteConfirm(title: string, message: string): Promise<boolean> | undefined;
+	select(
+		title: string,
+		options: string[],
+		tui: (title: string, options: string[]) => Promise<string | undefined>,
+		opts?: { signal?: AbortSignal },
+	): Promise<string | undefined>;
+	input(
+		title: string,
+		tui: (title: string) => Promise<string | undefined>,
+		opts?: { signal?: AbortSignal },
+	): Promise<string | undefined>;
+	handleAgentEnd(messages: readonly AgentMessage[], willRetry: boolean): Promise<void>;
+}
+
 export class InteractiveMode {
 	private runtimeHost: AgentSessionRuntime;
 	private ui: TUI;
@@ -490,6 +516,8 @@ export class InteractiveMode {
 	// Stored so the same manager can be injected into custom editors, selectors, and extension UI.
 	private keybindings: KeybindingsManager;
 	private version: string;
+	/** Newer release found by the startup update check ("🆕 X available" badge). */
+	private latestVersion: string | undefined;
 	private isInitialized = false;
 	private onInputCallback?: (text: string) => void;
 	private pendingUserInputs: string[] = [];
@@ -544,16 +572,16 @@ export class InteractiveMode {
 		},
 	});
 	private taskGraphComponent: TaskGraphComponent | undefined;
-	private subagentPanel: SubagentPanelComponent = new SubagentPanelComponent();
 	private subagentPanelUnsubscribe: (() => void) | undefined;
-	private subagentPanelHideTimer: ReturnType<typeof setTimeout> | undefined;
 	private learningUserText: string | undefined;
 	private learningToolEvidence: LearningToolEvidence[] = [];
 	/** Global cooldown for the autonomous refiner pass (see AUTO_REFINE_COOLDOWN_MS). */
 	private lastAutoRefineAt = 0;
-	/** Telegram remote bridge: phone messages mirror into the shared session. */
+	/** Remote bridges: phone/chat messages mirror into the shared session. */
 	private telegramBridge: TelegramBridge | undefined;
-	private unsubscribeTelegram: (() => void) | undefined;
+	private discordBridge: DiscordBridge | undefined;
+	private imessageBridge: IMessageBridge | undefined;
+	private remoteBridgeUnsubscribe: (() => void) | undefined;
 	/** Voice Mode: push-to-talk (Space) → Moonshine STT → prompt; Kokoro TTS speaks replies. */
 	private voiceMode: VoiceMode | undefined;
 	private voiceEnabled = false;
@@ -689,28 +717,17 @@ export class InteractiveMode {
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor as Component);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
-		this.footer = new FooterComponent(this.session, this.footerDataProvider, () => this.orchestrator.getTaskGraph());
+		this.footer = new FooterComponent(
+			this.session,
+			this.footerDataProvider,
+			() => this.orchestrator.getTaskGraph(),
+			() => this.getSubagentFooterChip(),
+		);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		// Sub-agent panel: show 1/3-width progress while a sub-agent runs; on
 		// success keep the completion summary visible for a brief settle window
 		// before collapsing back to full-width main transcript.
-		this.subagentPanelUnsubscribe = this.session.onSubagentEvent(() => {
-			if (this.subagentPanelHideTimer) {
-				clearTimeout(this.subagentPanelHideTimer);
-				this.subagentPanelHideTimer = undefined;
-			}
-			const state = this.session.subagentState;
-			this.subagentPanel.setState(state);
-			if (this.session.runningSubagentCount === 0 && state.runs.length > 0) {
-				// All settled: show the completion briefly, then hide + prune so the
-				// panel map stays bounded and the panel actually collapses.
-				this.subagentPanelHideTimer = setTimeout(() => {
-					this.session.pruneSettledSubagentRuns();
-					this.subagentPanel.setState({ runs: [], capacity: state.capacity });
-					this.ui.requestRender();
-				}, 2000);
-			}
-		});
+		this.subscribeToSubagents();
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
 
@@ -966,25 +983,12 @@ export class InteractiveMode {
 						shrink: 1,
 						minSize: 1,
 					},
-					{
-						// Sub-agent panel: 1/3 of the flexible area while a sub-agent runs,
-						// hidden (0 height) otherwise — the main transcript keeps 2/3.
-						component: this.subagentPanel,
-						basis: 0,
-						grow: 1,
-						shrink: 1,
-						minSize: 0,
-						visible: () => this.subagentPanel.active,
-					},
 					{ component: dock, basis: "auto", grow: 0, shrink: 1, minSize: 1 },
 				]),
 			);
 		} else {
 			this.ui.addChild(this.documentContainer);
 			this.ui.addChild(this.pendingMessagesContainer);
-			// Sub-agent panel: same visibility in the regular TUI — renders its
-			// lines above the editor, empty (0-height) when no sub-agent runs.
-			this.ui.addChild(this.subagentPanel);
 			this.ui.addChild(this.statusContainer);
 			this.ui.addChild(this.widgetContainerAbove);
 			this.ui.addChild(this.editorContainer);
@@ -1010,11 +1014,16 @@ export class InteractiveMode {
 			const renderLogo = () => {
 				const blockWordmark = getPorcupineBlockWordmark(this.ui.terminal.columns);
 				if (!blockWordmark) {
-					return theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`);
+					return (
+						theme.bold(theme.fg("accent", APP_NAME)) +
+						theme.fg("dim", ` v${this.version}`) +
+						this.renderUpdateBadge()
+					);
 				}
 				return (
 					chalk.bold(chalk.hex(PORCUPINE_BLOCK_WORDMARK_COLOR)(blockWordmark)) +
-					theme.fg("dim", `\n${APP_NAME} v${this.version}`)
+					theme.fg("dim", `\n${APP_NAME} v${this.version}`) +
+					this.renderUpdateBadge()
 				);
 			};
 
@@ -1117,7 +1126,7 @@ export class InteractiveMode {
 	 */
 	async run(): Promise<void> {
 		await this.init();
-		this.startTelegramBridgeIfConfigured();
+		this.startRemoteBridges();
 
 		if (!getProductEnvironment("OFFLINE")) {
 			void this.session.modelRuntime
@@ -1126,12 +1135,17 @@ export class InteractiveMode {
 				.catch(() => {});
 		}
 
-		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newRelease) => {
-			if (newRelease) {
-				this.showNewVersionNotification(newRelease);
-			}
-		});
+		// Start version check asynchronously (npm registry / GitHub, cached 24h)
+		if (this.settingsManager.getUpdateCheck()) {
+			checkForNewPiVersion(this.version, { cacheTtlMs: this.settingsManager.getUpdateCheckIntervalMs() }).then(
+				(newRelease) => {
+					if (newRelease) {
+						this.latestVersion = newRelease.version;
+						this.showNewVersionNotification(newRelease);
+					}
+				},
+			);
+		}
 
 		// Start package update check asynchronously
 		this.checkForPackageUpdates()
@@ -2049,6 +2063,21 @@ export class InteractiveMode {
 		}
 	}
 
+	/** Start every configured remote bridge (Telegram / Discord / iMessage). */
+	private startRemoteBridges(): void {
+		this.startTelegramBridgeIfConfigured();
+		this.startDiscordBridgeIfConfigured();
+		this.startImessageBridgeIfConfigured();
+		// Forward terminal responses to whichever bridge started the turn.
+		this.remoteBridgeUnsubscribe = this.session.subscribe((event) => {
+			if (event.type === "agent_end") {
+				for (const bridge of this.remoteBridges) {
+					void bridge.handleAgentEnd(event.messages, event.willRetry);
+				}
+			}
+		});
+	}
+
 	/** Start the Telegram bridge when PORCUPINE_TELEGRAM_TOKEN is configured. */
 	private startTelegramBridgeIfConfigured(): void {
 		const token = process.env.PORCUPINE_TELEGRAM_TOKEN;
@@ -2072,12 +2101,6 @@ export class InteractiveMode {
 					this.session.interactionMode,
 				),
 		});
-		this.unsubscribeTelegram = this.session.subscribe((event) => {
-			if (event.type === "agent_end") {
-				void this.telegramBridge?.handleAgentEnd(event.messages, event.willRetry);
-			}
-		});
-		this.telegramBridge.attachConfirm(this.session);
 		void this.telegramBridge
 			.start()
 			.then(() => {
@@ -2092,34 +2115,110 @@ export class InteractiveMode {
 			});
 	}
 
+	/** Start the Discord bridge when PORCUPINE_DISCORD_TOKEN is configured. */
+	private startDiscordBridgeIfConfigured(): void {
+		const token = process.env.PORCUPINE_DISCORD_TOKEN;
+		if (!token) {
+			return;
+		}
+		const allowlist = (process.env.PORCUPINE_DISCORD_ALLOW ?? "")
+			.split(",")
+			.map((part) => part.trim())
+			.filter(Boolean);
+		this.discordBridge = new DiscordBridge({
+			token,
+			allowlist,
+			prompt: (text, options) =>
+				this.session.prompt(text, { streamingBehavior: options?.streamingBehavior ?? "followUp" }),
+			getStatus: () =>
+				formatBridgeStatus(
+					this.sessionManager.getSessionId(),
+					this.sessionManager.getCwd(),
+					this.session.interactionMode,
+				),
+		});
+		void this.discordBridge
+			.start()
+			.then(() => {
+				this.showStatus(
+					`Discord bridge connected (${allowlist.length > 0 ? `${allowlist.length} allowed channel${allowlist.length === 1 ? "" : "s"}` : "no channels allowed yet"}). Set PORCUPINE_DISCORD_ALLOW to authorize channel ids.`,
+				);
+			})
+			.catch((error: unknown) => {
+				this.showWarning(
+					`Discord bridge failed to start: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
+	}
+
+	/** Start the iMessage bridge when PORCUPINE_IMESSAGE_ALLOW is configured (macOS only). */
+	private startImessageBridgeIfConfigured(): void {
+		const allowlist = (process.env.PORCUPINE_IMESSAGE_ALLOW ?? "")
+			.split(",")
+			.map((part) => part.trim())
+			.filter(Boolean);
+		if (allowlist.length === 0) {
+			return;
+		}
+		this.imessageBridge = new IMessageBridge({
+			allowlist,
+			prompt: (text, options) =>
+				this.session.prompt(text, { streamingBehavior: options?.streamingBehavior ?? "followUp" }),
+			getStatus: () =>
+				formatBridgeStatus(
+					this.sessionManager.getSessionId(),
+					this.sessionManager.getCwd(),
+					this.session.interactionMode,
+				),
+		});
+		void this.imessageBridge
+			.start()
+			.then(() => {
+				this.showStatus(
+					`iMessage bridge polling (${allowlist.length} allowed chat${allowlist.length === 1 ? "" : "s"}). Set PORCUPINE_IMESSAGE_ALLOW to change.`,
+				);
+			})
+			.catch((error: unknown) => {
+				this.showWarning(
+					`iMessage bridge failed to start: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
+	}
+
+	/** Running remote bridges, used to race confirm/select/input across channels. */
+	private get remoteBridges(): RemoteBridgeLike[] {
+		const bridges: RemoteBridgeLike[] = [];
+		if (this.telegramBridge?.isRunning) bridges.push(this.telegramBridge);
+		if (this.discordBridge?.isRunning) bridges.push(this.discordBridge);
+		if (this.imessageBridge?.isRunning) bridges.push(this.imessageBridge);
+		return bridges;
+	}
+
 	private async rebindCurrentSession(options: { renderBeforeBind?: boolean } = {}): Promise<void> {
 		const session = this.session;
 
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
-		this.subagentPanelUnsubscribe?.();
-		this.subagentPanelUnsubscribe = undefined;
-		if (this.subagentPanelHideTimer) {
-			clearTimeout(this.subagentPanelHideTimer);
-			this.subagentPanelHideTimer = undefined;
-		}
 		this.applyRuntimeSettings();
 		this.wireModeConfirmations();
 
 		if (options.renderBeforeBind) {
 			this.renderCurrentSessionState();
 			this.subscribeToAgent();
+			this.subscribeToSubagents();
 		}
 
 		await this.bindCurrentSessionExtensions();
 
 		if (this.session !== session) {
 			this.wireModeConfirmations();
+			this.subscribeToSubagents();
 			return;
 		}
 
 		if (!options.renderBeforeBind) {
 			this.subscribeToAgent();
+			this.subscribeToSubagents();
 		}
 
 		await this.updateAvailableProviderCount();
@@ -2127,10 +2226,16 @@ export class InteractiveMode {
 		this.updateTerminalTitle();
 	}
 
-	/** Ask-mode and flagged-Normal commands confirm through the TUI selector (+ Telegram buttons when bridged). */
+	/** Ask-mode and flagged-Normal commands confirm through the TUI selector + every running remote bridge. */
 	private wireModeConfirmations(): void {
-		this.session.setConfirmCallback((title, message) => this.showExtensionConfirm(title, message));
-		this.telegramBridge?.attachConfirm(this.session);
+		this.session.setConfirmCallback(async (title, message) => {
+			const decisions: Promise<boolean>[] = [this.showExtensionConfirm(title, message)];
+			for (const bridge of this.remoteBridges) {
+				const remote = bridge.remoteConfirm(title, message);
+				if (remote) decisions.push(remote);
+			}
+			return Promise.race(decisions);
+		});
 	}
 
 	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<never> {
@@ -2311,6 +2416,92 @@ export class InteractiveMode {
 			this.showStatusIndicator(new WorkingStatusIndicator(this.ui, "", restored));
 		}
 		this.ui.requestRender();
+	}
+
+	/**
+	 * Map a tool call to its status chip. Known tools get their phase (Reading /
+	 * Searching for skills / …); any unmapped tool gets "🧰 Using <tool>" so the
+	 * user always sees WHAT the main agent is doing, like the normal Working /
+	 * Thinking chips.
+	 */
+	private toolChip(toolName: string | undefined | null, args?: unknown): { phase: AnimationId; name?: string } {
+		const toolActivity = resolveToolActivity(toolName, args);
+		if (toolActivity) return { phase: toolActivity.id, name: toolActivity.name };
+		const fallback = resolveAnimationFromToolName(toolName);
+		if (fallback === "working") return { phase: "using-tool", name: toolName || undefined };
+		return { phase: fallback };
+	}
+
+	/** True for messaging tools (send_to_subagent / WoT send_message, check_messages). */
+	private isMessagingToolName(toolName: string | undefined | null): boolean {
+		return toolName === "send_to_subagent" || toolName === "send_message" || toolName === "check_messages";
+	}
+
+	/**
+	 * Sub-agent strip chip: "🤖(📄 Extracting)" / "🤖(🧠 Thinking)" / "🤖 Sub-agent".
+	 * The parenthesized activity reuses the same chip resolution as the main agent,
+	 * so reading skills, searching, messaging, and generic tools all show their own
+	 * emoji and label.
+	 */
+	/**
+	 * Sub-agent strip chip in SLOT ORDER: "🤖(Sub 1, Sub 2, Sub 3)" — position 1
+	 * is always the first sub-agent's activity, position 2 the second, etc.
+	 * e.g. "🤖(📄 Extracting)" (one), "🤖(📄 Extracting, 🌐 Searching)" (two),
+	 * "🤖(🧠 Thinking)", or "🤖 Sub-agent" at start. Each activity reuses the
+	 * same chip resolution as the main agent.
+	 */
+	/**
+	 * Animated sub-agent chip for the FOOTER (beside the 🧵 thread counter).
+	 * Frames cycle on a timer while any worker runs; the status strip stays the
+	 * main agent's.
+	 */
+	private subagentFooterFrames: string[] | undefined;
+	private subagentFooterIndex = 0;
+	private subagentFooterTimer: ReturnType<typeof setInterval> | undefined;
+
+	private getSubagentFooterChip(): string | undefined {
+		if (!this.subagentFooterFrames || this.subagentFooterFrames.length === 0) return undefined;
+		return this.subagentFooterFrames[this.subagentFooterIndex % this.subagentFooterFrames.length];
+	}
+
+	private startSubagentFooterTimer(): void {
+		if (this.subagentFooterTimer) return;
+		this.subagentFooterTimer = setInterval(() => {
+			if (!this.subagentFooterFrames || this.subagentFooterFrames.length === 0) return;
+			this.subagentFooterIndex = (this.subagentFooterIndex + 1) % this.subagentFooterFrames.length;
+			this.ui.requestRender();
+		}, 320);
+	}
+
+	private stopSubagentFooterTimer(): void {
+		if (this.subagentFooterTimer) {
+			clearInterval(this.subagentFooterTimer);
+			this.subagentFooterTimer = undefined;
+		}
+	}
+
+	private subagentActivityIndicator(
+		runs: Array<{
+			lastTool?: string;
+			lastToolArgs?: unknown;
+			phase?: "tool" | "thinking";
+		}>,
+	): AnimationLoaderOptions | undefined {
+		if (runs.length === 0) return undefined;
+		const parts: string[] = [];
+		for (const run of runs) {
+			if (run.phase === "tool" && run.lastTool) {
+				const chip = this.toolChip(run.lastTool, run.lastToolArgs);
+				const anim = getAnimation(chip.phase);
+				parts.push(`${anim.emoji} ${chip.name ? `${anim.label}: ${chip.name}` : anim.label}`);
+			} else if (run.phase === "thinking") {
+				parts.push("🧠 Thinking");
+			} else {
+				parts.push("🤖");
+			}
+		}
+		const chipBase = parts.every((part) => part === "🤖") ? "🤖 Sub-agent" : `🤖(${parts.join(", ")})`;
+		return { frames: DOT_FRAMES.map((dots) => `${chipBase}${dots}`), intervalMs: 320 };
 	}
 
 	/**
@@ -2665,23 +2856,30 @@ export class InteractiveMode {
 
 	private createExtensionUIContext(): ExtensionUIContext {
 		return {
-			// When the Telegram bridge is live, dialogs race TUI + phone (first
-			// response wins); the closures read the bridge at call time so this
-			// works regardless of when the bridge starts.
+			// When any remote bridge is live, dialogs race TUI + every channel (first
+			// response wins); the closures read the bridges at call time so this
+			// works regardless of when a bridge starts. The TUI prompt is created
+			// ONCE and shared so the selector/input does not open N times.
 			select: (title, options, opts) => {
-				const bridge = this.telegramBridge;
-				if (bridge?.isRunning) {
-					return bridge.select(title, options, (t, o) => this.showExtensionSelector(t, o, opts), opts);
+				const bridges = this.remoteBridges;
+				if (bridges.length === 0) return this.showExtensionSelector(title, options, opts);
+				const tuiPromise = this.showExtensionSelector(title, options, opts);
+				const candidates: Promise<string | undefined>[] = [tuiPromise];
+				for (const bridge of bridges) {
+					candidates.push(bridge.select(title, options, () => tuiPromise, opts));
 				}
-				return this.showExtensionSelector(title, options, opts);
+				return Promise.race(candidates);
 			},
 			confirm: (title, message, opts) => this.showExtensionConfirm(title, message, opts),
 			input: (title, placeholder, opts) => {
-				const bridge = this.telegramBridge;
-				if (bridge?.isRunning) {
-					return bridge.input(title, (t) => this.showExtensionInput(t, placeholder, opts), opts);
+				const bridges = this.remoteBridges;
+				if (bridges.length === 0) return this.showExtensionInput(title, placeholder, opts);
+				const tuiPromise = this.showExtensionInput(title, placeholder, opts);
+				const candidates: Promise<string | undefined>[] = [tuiPromise];
+				for (const bridge of bridges) {
+					candidates.push(bridge.input(title, () => tuiPromise, opts));
 				}
-				return this.showExtensionInput(title, placeholder, opts);
+				return Promise.race(candidates);
 			},
 			notify: (message, type) => this.showExtensionNotify(message, type),
 			onTerminalInput: (handler) => this.addExtensionTerminalInputListener(handler),
@@ -3453,6 +3651,16 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/sandbox" || text.startsWith("/sandbox ")) {
+				this.editor.setText("");
+				await this.handleSandboxCommand(text);
+				return;
+			}
+			if (text === "/update") {
+				this.editor.setText("");
+				await this.handleUpdateCommand();
+				return;
+			}
 			if (text === "/adaptive" || text.startsWith("/adaptive ")) {
 				this.handleAdaptiveReasoningCommand(text);
 				this.editor.setText("");
@@ -3582,6 +3790,31 @@ export class InteractiveMode {
 			}
 			this.editor.addToHistory?.(text);
 		};
+	}
+
+	/**
+	 * Subscribe to sub-agent progress events for the footer activity chip.
+	 * Must be re-called on every session rebind — rebindCurrentSession swaps
+	 * this.session, so a subscription captured in init() would go dead.
+	 */
+	private subscribeToSubagents(): void {
+		this.subagentPanelUnsubscribe?.();
+		this.subagentPanelUnsubscribe = this.session.onSubagentEvent(() => {
+			const state = this.session.subagentState;
+			// Footer sub-agent activity chip (the ONLY sub-agent UI): animate
+			// "🤖(📄 Extracting, 🌐 Searching)" beside the 🧵 thread counter while
+			// any worker runs. The status strip stays the main agent's.
+			if (state.runs.length > 0 && this.session.runningSubagentCount > 0) {
+				const indicator = this.subagentActivityIndicator(state.runs);
+				this.subagentFooterFrames = indicator?.frames ?? undefined;
+				this.subagentFooterIndex = 0;
+				this.startSubagentFooterTimer();
+			} else {
+				this.stopSubagentFooterTimer();
+				this.subagentFooterFrames = undefined;
+			}
+			this.ui.requestRender();
+		});
 	}
 
 	private subscribeToAgent(): void {
@@ -4207,6 +4440,14 @@ export class InteractiveMode {
 								component.setExpanded(this.toolOutputExpanded);
 								this.chatContainer.addChild(component);
 								this.pendingTools.set(content.id, component);
+								// Chip appears as soon as the model emits the tool call — don't
+								// wait for tool_execution_start (which can lag the stream).
+								const streamChip = this.toolChip(content.name, content.arguments);
+								this.setPorcupineActivity(streamChip.phase, {
+									showInterruptHint: true,
+									force: true,
+									name: streamChip.name,
+								});
 							} else {
 								const component = this.pendingTools.get(content.id);
 								if (component) {
@@ -4300,10 +4541,9 @@ export class InteractiveMode {
 				}
 				component.markExecutionStarted();
 				// Tool name wins for the status chip — never let later message_update steal it.
-				// Args refine it: "👀 Searching for skills", "📖 Reading skill: git-basics".
-				const toolActivity = resolveToolActivity(event.toolName, event.args);
-				const toolPhase = toolActivity?.id ?? resolveAnimationFromToolName(event.toolName);
-				this.setPorcupineActivity(toolPhase, { showInterruptHint: true, force: true, name: toolActivity?.name });
+				// Args refine it: "👀 Searching for skills", "📖 Reading skill: git-basics", "🧰 Using <tool>".
+				const chip = this.toolChip(event.toolName, event.args);
+				this.setPorcupineActivity(chip.phase, { showInterruptHint: true, force: true, name: chip.name });
 				this.orchestrator.ensureDynamicStep(event.toolName);
 				this.orchestrator.markStepForTool(event.toolName);
 				this.applyTaskGraphDisplay();
@@ -4318,11 +4558,11 @@ export class InteractiveMode {
 					// Keep the tool animation locked while output streams.
 					const name = component.getToolName?.() ?? event.toolName;
 					if (name) {
-						const toolActivity = resolveToolActivity(name, component.getArgs?.());
-						this.setPorcupineActivity(toolActivity?.id ?? resolveAnimationFromToolName(name), {
+						const chip = this.toolChip(name, component.getArgs?.());
+						this.setPorcupineActivity(chip.phase, {
 							showInterruptHint: true,
 							force: true,
-							name: toolActivity?.name,
+							name: chip.name,
 						});
 					}
 					this.ui.requestRender();
@@ -4351,7 +4591,8 @@ export class InteractiveMode {
 					if (event.isError) {
 						this.setPorcupineActivity("error");
 					} else if (this.pendingTools.size === 0) {
-						this.setPorcupineActivity("thinking");
+						// A finished message send shows ✉️ Sent message before the next phase.
+						this.setPorcupineActivity(this.isMessagingToolName(toolName) ? "sent-message" : "thinking");
 					} else {
 						// Switch strip to the next still-running tool's phase.
 						const next = this.pendingTools.values().next().value as
@@ -4359,10 +4600,8 @@ export class InteractiveMode {
 							| undefined;
 						const nextName = next?.getToolName?.();
 						if (nextName) {
-							const nextActivity = resolveToolActivity(nextName, next?.getArgs?.());
-							this.setPorcupineActivity(nextActivity?.id ?? resolveAnimationFromToolName(nextName), {
-								name: nextActivity?.name,
-							});
+							const chip = this.toolChip(nextName, next?.getArgs?.());
+							this.setPorcupineActivity(chip.phase, { name: chip.name });
 						}
 					}
 				}
@@ -5755,6 +5994,12 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0));
 		this.ui.requestRender();
+	}
+
+	/** "🆕 vX.Y.Z available" badge shown beside the version in the header. */
+	private renderUpdateBadge(): string {
+		if (!this.latestVersion) return "";
+		return theme.fg("warning", ` · 🆕 v${this.latestVersion} available — /update`);
 	}
 
 	showNewVersionNotification(release: LatestPiRelease): void {
@@ -7751,6 +7996,180 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	/** Agent-home dir where /sandbox on installs the bundled Gondolin extension. */
+	private gondolinExtensionDir(): string {
+		return path.join(os.homedir(), ".porcupine", "agent", "extensions", "gondolin");
+	}
+
+	/** Bundled Gondolin extension shipped with the package (examples/extensions/gondolin). */
+	private bundledGondolinSourceDir(): string {
+		return path.join(getPackageDir(), "examples", "extensions", "gondolin");
+	}
+
+	private gondolinDepInstalled(extDir: string): boolean {
+		return fs.existsSync(path.join(extDir, "node_modules", "@earendil-works", "gondolin"));
+	}
+
+	private copyDirRecursive(source: string, dest: string): void {
+		fs.mkdirSync(dest, { recursive: true });
+		for (const entry of fs.readdirSync(source)) {
+			const srcPath = path.join(source, entry);
+			const destPath = path.join(dest, entry);
+			if (fs.statSync(srcPath).isDirectory()) this.copyDirRecursive(srcPath, destPath);
+			else fs.copyFileSync(srcPath, destPath);
+		}
+	}
+
+	private async runNpmInstall(cwd: string): Promise<boolean> {
+		const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+		return new Promise<boolean>((resolve) => {
+			const child = spawn(npmCmd, ["install", "--ignore-scripts"], { cwd, stdio: "pipe" });
+			let output = "";
+			child.stdout.on("data", (data: Buffer) => {
+				output += data.toString();
+			});
+			child.stderr.on("data", (data: Buffer) => {
+				output += data.toString();
+			});
+			child.on("close", (code) => {
+				if (code !== 0) {
+					console.error(output);
+				}
+				resolve(code === 0);
+			});
+			child.on("error", (error) => {
+				console.error(error.message);
+				resolve(false);
+			});
+		});
+	}
+
+	/** /sandbox status — report activation state plus Gondolin requirements. */
+	private showGondolinSandboxStatus(): void {
+		const extDir = this.gondolinExtensionDir();
+		const enabled = this.settingsManager.getExtensionPaths().includes(extDir);
+		const installed = fs.existsSync(path.join(extDir, "index.ts"));
+		const depInstalled = this.gondolinDepInstalled(extDir);
+		const qemuFound =
+			spawnSync("which", ["qemu-system-aarch64"], { stdio: "ignore" }).status === 0 ||
+			spawnSync("which", ["qemu-system-x86_64"], { stdio: "ignore" }).status === 0;
+		const vmLoaded = this.session.extensionRunner.getCommand("gondolin") !== undefined;
+		const lines = [
+			`Sandbox: ${enabled ? theme.fg("success", "ON") : theme.fg("muted", "OFF")}`,
+			`Extension: ${installed ? "installed" : "not installed"} (${extDir})`,
+			`@earendil-works/gondolin: ${depInstalled ? "installed" : "missing — run /sandbox on"}`,
+			`Runtime: Node ${process.versions.node} (Gondolin needs >= 23.6)`,
+			`QEMU: ${qemuFound ? "found" : theme.fg("warning", "missing — brew install qemu")}`,
+			`Gondolin VM loaded: ${vmLoaded ? theme.fg("success", "yes — /gondolin shows VM status") : theme.fg("muted", "no")}`,
+		];
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new Text(lines.join("\n"), 1, 0));
+		this.ui.requestRender();
+	}
+
+	/** /sandbox on — install, register, and hot-reload the Gondolin tool-routing extension. */
+	private async enableGondolinSandbox(): Promise<void> {
+		const extDir = this.gondolinExtensionDir();
+		const sourceDir = this.bundledGondolinSourceDir();
+		try {
+			if (!fs.existsSync(path.join(extDir, "index.ts"))) {
+				if (!fs.existsSync(path.join(sourceDir, "index.ts"))) {
+					this.showWarning(
+						`Bundled Gondolin extension not found (${sourceDir}). Reinstall the package to restore it.`,
+					);
+					this.ui.requestRender();
+					return;
+				}
+				this.copyDirRecursive(sourceDir, extDir);
+			}
+			if (!this.gondolinDepInstalled(extDir)) {
+				this.showStatus("Installing @earendil-works/gondolin (first run only)…");
+				this.ui.requestRender();
+				const ok = await this.runNpmInstall(extDir);
+				if (!ok) {
+					this.showError(
+						`Gondolin dependency install failed. Run manually: cd ${extDir} && npm install --ignore-scripts`,
+					);
+					this.ui.requestRender();
+					return;
+				}
+			}
+			const paths = this.settingsManager.getExtensionPaths();
+			if (!paths.includes(extDir)) {
+				this.settingsManager.setExtensionPaths([...paths, extDir]);
+			}
+			this.showStatus("Sandbox ON — reloading extensions to route tools into the Gondolin VM…");
+			await this.handleReloadCommand();
+			this.showStatus("Sandbox ON: built-in tools and ! commands run in the Gondolin micro-VM (/workspace).");
+		} catch (error) {
+			this.showError(`Sandbox enable failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		this.ui.requestRender();
+	}
+
+	/** /sandbox off — unregister and reload so tools run on the host again. */
+	private async disableGondolinSandbox(): Promise<void> {
+		const extDir = this.gondolinExtensionDir();
+		const paths = this.settingsManager.getExtensionPaths().filter((p) => p !== extDir);
+		this.settingsManager.setExtensionPaths(paths);
+		this.showStatus("Sandbox OFF — reloading extensions…");
+		await this.handleReloadCommand();
+		this.showStatus("Sandbox OFF: tools run on the host again.");
+		this.ui.requestRender();
+	}
+
+	/** /sandbox [on|off|status] — Gondolin micro-VM isolation for built-in tools. */
+	/** /update — force a fresh check and show current vs latest + how to install. */
+	private async handleUpdateCommand(): Promise<void> {
+		const current = this.version;
+		this.showStatus("Checking for updates…");
+		const latest = await checkForNewPiVersion(current, { cacheTtlMs: 0 }).catch(() => undefined);
+		this.chatContainer.addChild(new Spacer(1));
+		if (!latest) {
+			this.chatContainer.addChild(
+				new Text(theme.fg("success", `You're up to date — ${APP_NAME} v${current}.`), 1, 0),
+			);
+		} else {
+			this.latestVersion = latest.version;
+			const pkg = latest.packageName ?? getInstalledPackageName();
+			const lines = [
+				`Current: v${current}`,
+				`Latest:  ${theme.fg("warning", `v${latest.version} available`)}`,
+				"",
+				`To update: npm install -g --ignore-scripts ${pkg ?? "@porcupineai/coding-agent"}`,
+				"Or run: porcupine update --yes",
+			];
+			if (latest.note) {
+				lines.push("", `Release notes: ${latest.note.slice(0, 300)}`);
+			}
+			this.chatContainer.addChild(new Text(lines.join("\n"), 1, 0));
+		}
+		this.ui.requestRender();
+	}
+
+	private async handleSandboxCommand(text: string): Promise<void> {
+		const arg = text.startsWith("/sandbox ") ? text.slice(9).trim().toLowerCase() : "";
+		if (arg !== "" && arg !== "on" && arg !== "off" && arg !== "status" && arg !== "enable" && arg !== "disable") {
+			this.showWarning("Usage: /sandbox [on|off|status]");
+			this.ui.requestRender();
+			return;
+		}
+		if (arg === "on" || arg === "enable") {
+			if (process.platform === "win32") {
+				this.showWarning("Gondolin sandbox is not supported on Windows yet.");
+				this.ui.requestRender();
+				return;
+			}
+			await this.enableGondolinSandbox();
+			return;
+		}
+		if (arg === "off" || arg === "disable") {
+			await this.disableGondolinSandbox();
+			return;
+		}
+		this.showGondolinSandboxStatus();
+	}
+
 	private showInteractionModeSelector(): void {
 		this.showSelector((done) => {
 			const selector = new InteractionModeSelectorComponent(
@@ -8189,9 +8608,15 @@ export class InteractiveMode {
 	}
 
 	stop(): void {
-		this.telegramBridge?.stop().catch(() => {});
-		this.unsubscribeTelegram?.();
+		this.remoteBridgeUnsubscribe?.();
+		this.remoteBridgeUnsubscribe = undefined;
+		this.stopSubagentFooterTimer();
+		for (const bridge of [this.telegramBridge, this.discordBridge, this.imessageBridge]) {
+			void bridge?.stop().catch(() => {});
+		}
 		this.telegramBridge = undefined;
+		this.discordBridge = undefined;
+		this.imessageBridge = undefined;
 		if (this.settingsManager.getShowTerminalProgress()) {
 			this.ui.terminal.setProgress(false);
 		}

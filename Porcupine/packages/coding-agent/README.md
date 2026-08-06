@@ -30,13 +30,16 @@ control (**Ask** confirms everything, **Normal** asks on flagged commands,
 
 ## Features
 
-- **Sub-agents** — up to 3 parallel isolated workers (own context, curated
-  tools, hard step budgets). Reports are injected into your context **instantly**
-  (mid-turn or a fresh turn — never gated on your next prompt); **Escape**
-  (empty editor) cancels running workers.
+- **Sub-agents** — up to 3 parallel isolated workers (fresh context, the whole
+  tool stack minus agent-level tools, hard 120-step budgets). Reports are
+  injected into your context **instantly** (mid-turn or a fresh turn — never
+  gated on your next prompt); the agent can stop workers with `stop_subagent`
+  (one or all), and **Escape** (empty editor) cancels all of them. Live
+  activity animates in the footer beside the thread counter:
+  `🤖(📄 Extracting, 🌐 Searching) • 🧵 0/3 • (opencode-go) …`.
 - **WoT (Web of Thoughts)** — sub-agents sharing a `peerGroup` message each
   other and you live, main-agent-gated; `send_to_subagent` steers a running
-  worker. Multi-slot panel: `🧵 Sub-agents 2/3`.
+  worker. Live activity animates in the footer beside the thread counter.
 - **MCP client** — connect MCP servers (stdio + Streamable HTTP); their tools,
   resources (`mcp_resources`), and prompts (`/mcpp:`) become first-class.
   Fail-closed gate, browser OAuth (DCR+PKCE), OS-keyring tokens. See
@@ -59,6 +62,24 @@ control (**Ask** confirms everything, **Normal** asks on flagged commands,
 - **Telegram bridge** — message the same session from your phone
   (`PORCUPINE_TELEGRAM_TOKEN` in `~/.porcupine/agent/.env`); confirmations and
   `ask_question` arrive as buttons.
+- **Discord + iMessage bridges** — the same session contract over Discord
+  channels (`PORCUPINE_DISCORD_TOKEN`/`_ALLOW`) and the macOS Messages app
+  (`PORCUPINE_IMESSAGE_ALLOW`). Zero-dependency Discord gateway, AppleScript
+  iMessage polling; all three race the TUI for confirmations.
+- **`/sandbox`** — one command to route built-in tools into a Gondolin
+  micro-VM (`/sandbox on` installs, registers, and hot-reloads the extension;
+  `/sandbox status` checks Node/QEMU/VM state).
+- **`--headless`** — CI-friendly task mode: run a prompt to completion, print
+  the final report, exit 0 on success / 1 on error.
+- **Updates & sync** — startup update check (npm/GitHub, cached 24h) shows
+  `🆕 vX.Y.Z available` beside the version; `/update` + `porcupine update
+  [--yes]` install it; `porcupine sync [--force]` refreshes the shipped
+  agent-home prompt files without clobbering your edits.
+- **Stacks** — every tool and skill lives in one hierarchical capability tree
+  (`stacks/<stack>/<lane>/<name>`) injected into the model's context; see
+  [docs/stacks.md](docs/stacks.md).
+- **Sub-agents** — parallel isolated workers with WoT peer messaging and
+  instant report injection; see [docs/subagents.md](docs/subagents.md).
 - **Autonomy, bounded** — `/auto` enables autonomous operation; hardline
   destructive commands stay blocked in every mode. No daemon, no unattended
   execution: everything runs in the interactive session you can see.

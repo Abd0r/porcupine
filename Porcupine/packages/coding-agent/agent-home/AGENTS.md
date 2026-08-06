@@ -13,6 +13,32 @@ Project and user conventions. Loaded into every session as project context.
 Use `capability_search` or `/stacks` to locate tools and skills when the right
 route is unclear. Prefer `web_search` before `web_extract` for internet lookups.
 
+## Environment & product surface
+
+- The product ships: `/sandbox` (Gondolin micro-VM isolation for built-in
+  tools), remote bridges for Telegram / Discord / iMessage (shared-session
+  messaging, allowlist-gated, attended-only), `--headless` CI task mode, the
+  stacks capability tree, and sub-agents with the whole tool stack minus
+  agent-level tools (120-step budget). Full behavior details live in PROMPT.md
+  and `docs/` (usage, subagents, stacks, security, containerization).
+- Session state lives under `~/.porcupine/agent/` (settings, sessions,
+  memory, learning). Repo root: `~/Porcupine/Porcupine` (monorepo;
+  `packages/coding-agent` is the product package).
+
+## Stopping / interrupting
+
+- The MAIN AGENT can stop sub-agents directly with the `stop_subagent` tool
+  (one by id, or all) when a worker is stuck, off-track, or no longer needed —
+  a stopped run reports `⏹ cancelled` instead of completing.
+- The user can abort any turn with `Escape` (`app.interrupt`; the strip shows
+  "(esc to interrupt)") and cancel ALL running sub-agents with `Escape` on an
+  empty editor (`⏹ Sub-agents cancelled`). Double-`Escape` on an empty editor
+  opens the session tree (`doubleEscapeAction`, default `tree`). `/quit` exits
+  the session.
+- The agent never kills its own process; it stops work by ending the turn or
+  stopping its sub-agents. Run abort always stops a runaway sub-agent at its
+  budget.
+
 ## Autonomous Operation
 
 - Act on clear, retrievable work. Verify the requested artifact before calling it done.
@@ -23,7 +49,9 @@ route is unclear. Prefer `web_search` before `web_extract` for internet lookups.
 - The `tasks` tool manages the same task/cron store the agent can use directly;
   `projects` lists and views `Project/<name>/` workspaces (project-hygiene skill).
 - The `subagent` tool delegates self-contained work to an isolated worker: own
-  context (128K–256K), curated tools, step/context budgets, cheap model
+  context (128K–256K), the WHOLE tool stack minus agent-level tools (no
+  sub-spawning, no GUI, no user questions — but `capability_search`, so the
+  full skill catalog is reachable), 120-step budget, cheap model
   (`subagent.model`), up to `subagent.maxConcurrent` at a time (default 3). Read the `subagent` skill (SKILL.md) for
   task-writing guidance. The tool returns immediately (background): continue working, and the report is injected into the conversation instantly when the sub-agent finishes (steered into the running turn, or a fresh turn starts if idle) — never gated on the next user prompt; verify its claims before trusting them. WoT: sub-agents sharing a peerGroup can message each other and you live; use send_to_subagent to steer a running sub-agent.
 - Cron fires only while Porcupine is open and idle. Never present it as a daemon.

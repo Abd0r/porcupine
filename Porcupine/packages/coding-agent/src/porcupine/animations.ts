@@ -31,6 +31,13 @@ export type CoreAnimationId =
 	| "reading-project"
 	| "running"
 	| "browsing"
+	| "web-search"
+	| "web-extract"
+	| "subagent"
+	| "subagent-swap"
+	| "sending-message"
+	| "sent-message"
+	| "using-tool"
 	| "compacting"
 	| "error";
 
@@ -88,7 +95,7 @@ export const DEFAULT_ANIMATION_INTERVAL_MS = 320;
 
 /** Build chip frames: "🌌  Staring into the void." / ".." / "..." / ".." */
 export function buildDotFrames(emoji: string, label: string): string[] {
-	const chip = `${emoji}  ${label}`;
+	const chip = `${emoji} ${label}`;
 	return DOT_FRAMES.map((dots) => `${chip}${dots}`);
 }
 
@@ -113,6 +120,13 @@ export const ANIMATIONS: readonly AnimationSpec[] = [
 	{ id: "reading-project", emoji: "📖", label: "Reading project", intervalMs: 300 },
 	{ id: "running", emoji: "💻", label: "Running", intervalMs: 280 },
 	{ id: "browsing", emoji: "🌐", label: "Browsing", intervalMs: 300 },
+	{ id: "web-search", emoji: "🌐", label: "Searching", intervalMs: 300 },
+	{ id: "web-extract", emoji: "📄", label: "Extracting", intervalMs: 300 },
+	{ id: "subagent", emoji: "🤖", label: "Using Sub Agent", intervalMs: 300 },
+	{ id: "subagent-swap", emoji: "🤖", label: "Swapping Sub Agent", intervalMs: 300 },
+	{ id: "sending-message", emoji: "📨", label: "Sending message", intervalMs: 300 },
+	{ id: "sent-message", emoji: "✉️", label: "Sent message", intervalMs: 300 },
+	{ id: "using-tool", emoji: "🧰", label: "Using", intervalMs: 300 },
 	{ id: "compacting", emoji: "🗜️", label: "Compacting", intervalMs: 340 },
 	{ id: "error", emoji: "⚠️", label: "Recovering", intervalMs: 340 },
 	// --- easter eggs (rare stand-ins for Working / Thinking) ---
@@ -166,6 +180,13 @@ const TOOL_DRIVEN: ReadonlySet<AnimationId> = new Set([
 	"reading-project",
 	"running",
 	"browsing",
+	"web-search",
+	"web-extract",
+	"subagent",
+	"subagent-swap",
+	"sending-message",
+	"sent-message",
+	"using-tool",
 	"compacting",
 	"error",
 ]);
@@ -350,14 +371,10 @@ export function resolveAnimationFromToolName(toolName: string | undefined | null
 	if (name === "grep" || name === "find" || name === "search" || name === "glob" || name === "rg" || name === "ls") {
 		return "searching";
 	}
-	if (
-		name === "web_search" ||
-		name === "web_extract" ||
-		name === "webfetch" ||
-		name.includes("web") ||
-		name.includes("browser") ||
-		name.includes("fetch")
-	) {
+	if (name === "web_search" || name === "webfetch") return "web-search";
+	if (name === "web_extract") return "web-extract";
+	if (name === "send_message" || name === "check_messages") return "sending-message";
+	if (name.includes("web") || name.includes("browser") || name.includes("fetch")) {
 		return "browsing";
 	}
 	if (name.includes("memory") || name.includes("remember") || name.includes("update") || name.includes("sync")) {
@@ -397,10 +414,26 @@ export function resolveToolActivity(toolName: string | undefined | null, args?: 
 	const kind = typeof a.kind === "string" ? a.kind.trim().toLowerCase() : undefined;
 	const query = typeof a.query === "string" ? a.query.trim() : undefined;
 
+	if (name === "subagent" || name === "sub-agent") {
+		return { id: "subagent" };
+	}
+	if (name === "stop_subagent") {
+		return { id: "subagent" };
+	}
+	if (name === "send_to_subagent") {
+		return { id: "sending-message" };
+	}
 	if (name === "capability_search" || name === "capability-search") {
 		if (action === "view") return { id: "reading-skill", name: query || undefined };
 		if (kind === "tool") return { id: "searching-tools" };
 		if (kind === "skill") return { id: "searching-skills" };
+		// kind omitted (models usually skip it): infer from the query so the
+		// chip is still specific instead of always the generic "Searching".
+		if (query) {
+			const q = query.toLowerCase();
+			if (q.startsWith("skill:") || /\bskill/i.test(q)) return { id: "searching-skills" };
+			if (/\btool/i.test(q)) return { id: "searching-tools" };
+		}
 		return { id: "searching" };
 	}
 	if (name === "projects" || name === "project_search" || name === "project-search") {

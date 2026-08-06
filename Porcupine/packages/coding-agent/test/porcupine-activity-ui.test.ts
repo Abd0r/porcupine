@@ -2,6 +2,62 @@ import { describe, expect, it, vi } from "vitest";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 
 describe("setPorcupineActivity UI wiring (animations.ts)", () => {
+	it("maps unmapped tools to '🧰 Using <tool>'", () => {
+		const prototype = InteractiveMode as unknown as { prototype: { toolChip(t: string, a?: unknown): unknown } };
+		// subagent tool → its own 🤖 chip (not the generic 🧰 Using).
+		const sub = prototype.prototype.toolChip.call({}, "subagent", {});
+		expect(sub).toEqual({ phase: "subagent" });
+		// Sending a message (main → sub, WoT) → 📨 Sending message.
+		const send = prototype.prototype.toolChip.call({}, "send_to_subagent", {});
+		expect(send).toEqual({ phase: "sending-message" });
+		const wot = prototype.prototype.toolChip.call({}, "send_message", {});
+		expect(wot).toEqual({ phase: "sending-message" });
+		// Unmapped tools fall back to 🧰 Using <tool>.
+		const chip = prototype.prototype.toolChip.call({}, "tasks", {});
+		expect(chip).toEqual({ phase: "using-tool", name: "tasks" });
+		// Known tools keep their phase (web_search → web-search).
+		const known = prototype.prototype.toolChip.call({}, "web_search", {});
+		expect(known).toEqual({ phase: "web-search" });
+		const extract = prototype.prototype.toolChip.call({}, "web_extract", {});
+		expect(extract).toEqual({ phase: "web-extract" });
+	});
+
+	it("joins multiple sub-agents in slot order with commas in the strip chip", () => {
+		const prototype = InteractiveMode as unknown as {
+			prototype: {
+				toolChip(t: string, a?: unknown): { phase: string; name?: string };
+				subagentActivityIndicator(
+					runs: Array<{
+						lastTool?: string;
+						lastToolArgs?: unknown;
+						phase?: "tool" | "thinking";
+					}>,
+				): { frames: string[] } | undefined;
+			};
+		};
+		const fakeThis = { toolChip: prototype.prototype.toolChip };
+
+		// One worker extracting.
+		const one = prototype.prototype.subagentActivityIndicator.call(fakeThis, [
+			{ lastTool: "web_extract", phase: "tool" },
+		]);
+		expect(one!.frames[0]).toBe("🤖(📄 Extracting).");
+
+		// Two workers, slot order preserved: #1 extracting, #2 searching.
+		const two = prototype.prototype.subagentActivityIndicator.call(fakeThis, [
+			{ lastTool: "web_extract", phase: "tool" },
+			{ lastTool: "web_search", phase: "tool" },
+		]);
+		expect(two!.frames[0]).toBe("🤖(📄 Extracting, 🌐 Searching).");
+
+		// Slot order never changes even if #2 was active most recently.
+		const ordered = prototype.prototype.subagentActivityIndicator.call(fakeThis, [
+			{ lastTool: "read", lastToolArgs: { path: "/x/skills/vcs/git-basics/SKILL.md" }, phase: "tool" },
+			{ phase: "thinking" },
+		]);
+		expect(ordered!.frames[0]).toBe("🤖(📖 Reading skill: git-basics, 🧠 Thinking).");
+	});
+
 	it("does not restart glyphs when the animation id is unchanged", () => {
 		const setIndicator = vi.fn();
 		const setMessage = vi.fn();
@@ -96,8 +152,8 @@ describe("setPorcupineActivity UI wiring (animations.ts)", () => {
 
 		expect(setIndicator).toHaveBeenCalledTimes(1);
 		const options = setIndicator.mock.calls[0][0];
-		// Fixed emoji + cycling dots: "✏️  Editing." / ".." / "..." / ".."
-		expect(options.frames).toEqual(["✏️  Editing.", "✏️  Editing..", "✏️  Editing...", "✏️  Editing.."]);
+		// Fixed emoji + cycling dots: "✏️ Editing." / ".." / "..." / ".."
+		expect(options.frames).toEqual(["✏️ Editing.", "✏️ Editing..", "✏️ Editing...", "✏️ Editing.."]);
 		const message = setMessage.mock.calls[0][0] as string;
 		expect(message).toBe("(esc to interrupt)");
 		expect(fakeThis.activityPhase).toBe("editing");

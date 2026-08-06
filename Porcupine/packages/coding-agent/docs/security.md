@@ -44,14 +44,24 @@ Interaction modes choose how tool actions are approved, independent of reasoning
 
 MCP servers are external tools — treat them as untrusted. Porcupine's MCP client is **fail-closed**: a tool runs only when allowlisted or explicitly approved, hard-line destructive calls are denied in every mode, approvals are bound to a server content-hash (not its name — CVE-2025-54136), and project `mcp.json` servers do not auto-start without project trust. See [MCP](mcp.md) for the full security model.
 
-## Telegram Remote Access
+## Remote Bridges (Telegram / Discord / iMessage)
 
-Porcupine can be controlled from a phone via the Telegram bridge (`PORCUPINE_TELEGRAM_TOKEN`). Treat this as remote access to a local agent session:
+Porcupine can be controlled from a phone or chat channel via the remote
+bridges. Treat any bridge as remote access to a local agent session:
 
-- **Allowlist-gated**: only chat ids listed in `PORCUPINE_TELEGRAM_ALLOW` can talk to the agent; everything else is ignored.
-- **Attended-only**: the bridge runs inside the interactive TUI session. It does not start headless and is never a daemon.
-- **Same approval surface**: Ask-mode confirmations (bash commands, file mutations) are forwarded to Telegram as Approve/Deny buttons AND shown in the TUI; the first response wins. Unauthorized chats never see these prompts.
-- **Token is a credential**: keep `PORCUPINE_TELEGRAM_TOKEN` in `~/.porcupine/agent/.env` (chmod 600) or your environment; never commit it.
+- **Allowlist-gated**: Telegram only listens to chat ids in
+  `PORCUPINE_TELEGRAM_ALLOW`; Discord only listens to channel ids in
+  `PORCUPINE_DISCORD_ALLOW`; iMessage only listens to chats in
+  `PORCUPINE_IMESSAGE_ALLOW`. Everything else is ignored.
+- **Attended-only**: every bridge runs inside the interactive TUI session.
+  None of them start headless and none are daemons.
+- **Same approval surface**: Ask-mode confirmations (bash commands, file
+  mutations) race the TUI dialog with remote buttons/reactions/replies; the
+  first response wins. Unauthorized chats never see these prompts.
+- **Tokens are credentials**: keep `PORCUPINE_TELEGRAM_TOKEN` and
+  `PORCUPINE_DISCORD_TOKEN` in `~/.porcupine/agent/.env` (chmod 600) or your
+  environment; never commit them. iMessage needs no token (it uses the signed-in
+  Messages.app on the local machine).
 
 See [usage.md](usage.md) for the full bridge feature list.
 

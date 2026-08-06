@@ -13,7 +13,7 @@ import type { AgentMessage, AgentTool, AgentToolResult, StreamFn, ThinkingLevel 
  * sub-agents may run concurrently up to `subagent.maxConcurrent`.
  */
 
-export const DEFAULT_SUBAGENT_MAX_STEPS = 30;
+export const DEFAULT_SUBAGENT_MAX_STEPS = 120;
 export const DEFAULT_SUBAGENT_CONTEXT_TOKENS = 256_000;
 /** Lower bound for the recommended 128K–256K sub-agent context window. */
 export const SUBAGENT_CONTEXT_WINDOW_MIN = 128_000;
@@ -76,7 +76,7 @@ export interface SubagentResult {
 
 export type SubagentProgressEvent =
 	| { type: "start"; subagentId?: string; task: string; maxSteps: number; maxContextTokens: number }
-	| { type: "step"; subagentId?: string; step: number; toolName: string }
+	| { type: "step"; subagentId?: string; step: number; toolName: string; args?: unknown }
 	| { type: "turn"; subagentId?: string; step: number; contextTokens: number }
 	| { type: "done"; subagentId?: string; result: SubagentResult };
 
@@ -84,11 +84,11 @@ export type SubagentProgressEvent =
  * Wrap a tool with a step counter. The counter is enforced at the tool-call
  * boundary so a runaway sub-agent can never exceed its budget.
  */
-function withStepCounter(tool: AgentTool<any>, onStep: (toolName: string) => void): AgentTool<any> {
+function withStepCounter(tool: AgentTool<any>, onStep: (toolName: string, args?: unknown) => void): AgentTool<any> {
 	return {
 		...tool,
 		execute: async (...args: Parameters<AgentTool<any>["execute"]>): Promise<AgentToolResult<any>> => {
-			onStep(tool.name);
+			onStep(tool.name, args[1]);
 			return tool.execute(...args);
 		},
 	};
@@ -147,13 +147,13 @@ export async function runSubagent(options: SubagentOptions): Promise<SubagentRes
 	});
 
 	const toolWrappers = options.tools.map((tool) =>
-		withStepCounter(tool, (toolName) => {
+		withStepCounter(tool, (toolName, toolArgs) => {
 			steps += 1;
 			if (steps > maxSteps) {
 				budgetHit = true;
 				stopRun?.();
 			}
-			options.onProgress?.({ type: "step", step: steps, toolName });
+			options.onProgress?.({ type: "step", step: steps, toolName, args: toolArgs });
 		}),
 	);
 

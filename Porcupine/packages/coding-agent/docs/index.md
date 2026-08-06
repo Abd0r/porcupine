@@ -37,6 +37,8 @@ For the full first-run flow, see [Quickstart](quickstart.md).
 
 - [Quickstart](quickstart.md) - install, authenticate, and run a first session.
 - [Using Porcupine](usage.md) - interactive mode, slash commands, context files, and CLI reference.
+- [Stacks](stacks.md) - the capability tree: how every tool and skill is organized and discovered.
+- [Sub-agents](subagents.md) - parallel isolated workers, WoT coordination, and instant report injection.
 - [MCP](mcp.md) - Model Context Protocol client: connect MCP servers, tools/resources/prompts, OAuth, security.
 - [Providers](providers.md) - subscription and API-key setup for built-in providers.
 - [llama.cpp](llama-cpp.md) - run a local router and manage models with `/llama`.

@@ -161,8 +161,10 @@ import {
 } from "./session-search.ts";
 import {
 	createSendToSubagentToolDefinition,
+	createStopSubagentToolDefinition,
 	createSubagentToolDefinition,
 	createUnavailableSendToSubagentToolDefinition,
+	createUnavailableStopSubagentToolDefinition,
 	createUnavailableSubagentToolDefinition,
 	type SubagentToolOptions,
 } from "./subagent.ts";
@@ -194,6 +196,7 @@ export type ToolName =
 	| "literature"
 	| "subagent"
 	| "send_to_subagent"
+	| "stop_subagent"
 	| "mcp_resources";
 export const allToolNames: Set<ToolName> = new Set([
 	"ask_question",
@@ -215,6 +218,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"literature",
 	"subagent",
 	"send_to_subagent",
+	"stop_subagent",
 	"mcp_resources",
 ]);
 
@@ -235,6 +239,7 @@ export interface ToolsOptions {
 	literature?: LiteratureToolOptions;
 	subagent?: SubagentToolOptions;
 	sendToSubagent?: import("./subagent.ts").SendToSubagentToolOptions;
+	stopSubagent?: import("./subagent.ts").StopSubagentToolOptions;
 	mcpResources?: import("./mcp-resources.ts").McpResourcesToolOptions;
 }
 
@@ -406,6 +411,9 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		send_to_subagent: options?.sendToSubagent
 			? createSendToSubagentToolDefinition(options.sendToSubagent)
 			: createUnavailableSendToSubagentToolDefinition(),
+		stop_subagent: options?.stopSubagent
+			? createStopSubagentToolDefinition(options.stopSubagent)
+			: createUnavailableStopSubagentToolDefinition(),
 		mcp_resources: options?.mcpResources
 			? createMcpResourcesToolDefinition(options.mcpResources)
 			: createUnavailableMcpResourcesToolDefinition(),
@@ -479,6 +487,11 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 			options?.sendToSubagent
 				? createSendToSubagentToolDefinition(options.sendToSubagent)
 				: createUnavailableSendToSubagentToolDefinition(),
+		),
+		stop_subagent: wrapToolDefinition(
+			options?.stopSubagent
+				? createStopSubagentToolDefinition(options.stopSubagent)
+				: createUnavailableStopSubagentToolDefinition(),
 		),
 		mcp_resources: wrapToolDefinition(
 			options?.mcpResources

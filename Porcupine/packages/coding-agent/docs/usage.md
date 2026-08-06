@@ -65,6 +65,8 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/plan <text>`               | Inspect and draft a non-executing implementation plan                      |
 | `/modes`                     | Open the Ask / Normal / Auto interaction-mode picker                       |
 | `/auto [on|off|status]`     | Toggle or query Auto Mode (autonomous operation + fail-closed safety gate) |
+| `/sandbox [on|off|status]` | Route built-in tools into a Gondolin micro-VM (see [Containerization](containerization.md)); `on` installs + hot-reloads the Gondolin extension, `status` checks requirements (Node version, QEMU, VM state) |
+| `/update` | Force a fresh update check: shows current vs latest and how to install (`npm install -g …` or `porcupine update --yes`) |
 | `/hotkeys`                   | Show all keyboard shortcuts                                                |
 | `/changelog`                 | Display version history                                                    |
 | `/quit`                      | Quit porcupine                                                             |
@@ -72,7 +74,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/task`                     | Manage durable task templates and run history                              |
 | `/cron`                     | Schedule durable tasks (fires only while the session is open and idle)     |
 | `/guide`                    | Local onboarding: focused topics + exact docs to read                      |
-| `/stacks [query]`           | Explore capabilities grouped by stack                                      |
+| `/stacks [query]`           | Explore capabilities grouped by stack — see [Stacks](stacks.md) |
 | `/voice [on\|off\|status\|diag]`  | Voice Mode: push-to-talk with Space (Moonshine STT + Kokoro TTS, native audio for audio-capable models); `diag` runs a full mic→capture→transcription self-test |
 | `/reasoning`                | Set the reasoning level (separate from permission to act)                  |
 | `/thinking`                 | Show/hide thinking blocks                                                  |
@@ -256,11 +258,17 @@ Workspaces are plain files under `Project/` — nothing is hidden or duplicated
 into the session, and the search is intentionally shallow (direct children only,
 no symlinks).
 
-### Telegram remote access
+### Remote access (Telegram / Discord / iMessage)
 
-Turn a phone into a remote control for the **same session** the TUI shows. When
-`PORCUPINE_TELEGRAM_TOKEN` is set (a bot token from @BotFather), the interactive
-TUI starts a Telegram bridge on launch:
+Turn a phone or chat channel into a remote control for the **same session** the
+TUI shows. All three bridges share one contract: messages run on the shared
+session (they appear in the TUI), and the agent's response comes back to the
+channel that asked. They are attended-only: they run inside the interactive
+session and stop when the session closes.
+
+#### Telegram (`PORCUPINE_TELEGRAM_TOKEN`)
+
+A bot token from @BotFather starts the Telegram bridge on launch:
 
 - **Message via Telegram** → it runs on the shared session, so it appears in the
   TUI, and the agent's response comes back to Telegram (shown in both places).
@@ -292,9 +300,45 @@ Bot commands: `/start` (welcome + session info), `/status` (session, cwd, mode),
 
 **Security:** only chats in `PORCUPINE_TELEGRAM_ALLOW` (comma-separated chat
 ids) are allowed to talk to the bot. With an empty allowlist, only `/start`
-responds — it reports the chat id you need to authorize. The bridge is
-attended-only: it runs inside the interactive session and stops when the
-session closes.
+responds — it reports the chat id you need to authorize.
+
+#### Discord (`PORCUPINE_DISCORD_TOKEN`)
+
+Set a bot token and `PORCUPINE_DISCORD_ALLOW` (comma-separated channel ids) to
+use a Discord channel as a remote control:
+
+- **Message the channel** → runs on the shared session, response comes back to
+  the channel.
+- **Ask-mode confirmations** arrive as `✅`/`❌` reactions on the confirm
+  message, racing the TUI dialog (first response wins).
+- **`ask_question` options** arrive as numbered reactions (`1️⃣ 2️⃣ …`);
+  free-text questions become "Reply with your answer" — the next message from
+  that channel answers it.
+- **Commands:** `/status` · `/help`. Bot messages and messages from the bot
+  itself are ignored; channels outside the allowlist are ignored.
+- The bridge is **zero-dependency**: it uses Node's built-in WebSocket for the
+  gateway (auto-resume on reconnect) and REST for sending, with 429 backoff
+  and 2000-char chunking.
+
+#### iMessage (`PORCUPINE_IMESSAGE_ALLOW`) — macOS only
+
+Set `PORCUPINE_IMESSAGE_ALLOW` (comma-separated chat ids like
+`iMessage;-;+1234567890`, or phone/email handles that are resolved at startup)
+to use the Messages app as a remote control:
+
+- **Text the chat** → runs on the shared session, response comes back by
+  iMessage.
+- **Confirmations** are text-based: reply `APPROVE` / `DENY`.
+- **`ask_question` options** are numbered; reply with a number. Free-text
+  questions: reply with your answer.
+- **Commands:** `/status` · `/help`.
+- Requires macOS + Messages.app signed in. Polling is AppleScript-based
+  (`osascript`); sending chunks long responses.
+
+All three bridges forward responses only to the channel that started the turn
+(response provenance), queue messages while the agent is busy (never lost),
+and scope confirmations per-request (a late tap on an old button can never
+approve a newer one).
 
 ### Scientific Research
 
@@ -314,12 +358,31 @@ workspace (`EVIDENCE.md` for measurements and run commands).
 ### Status Strip and Footer
 
 The status strip shows the live activity as animated chips — a fixed emoji plus a
-label with trailing dots. Tool calls refine the chip from their arguments:
+label with trailing dots. It always tells you WHAT the agent is doing:
 
-- `capability_search` searching → 👀 `Searching for skills` / `Searching for tools`
-- `capability_search view <skill>` → 📖 `Reading skill: <skill>`
-- `projects` list/search → 👀 `Searching for projects`; `projects view <name>` → 📖 `Reading project: <name>`
-- `read` on a `SKILL.md` → 📖 `Reading skill: <skill-name>`
+- Thinking / working (no tool running) → 🧠 `Thinking` / ⚙️ `Working` (with rare
+  easter-egg stand-ins like 🌈 `Daydreaming`)
+- Tool calls refine the chip from their name **and** arguments:
+  - `capability_search` searching → 👀 `Searching for skills` / `Searching for tools`
+  - `capability_search view <skill>` or `read` on a `SKILL.md` → 📖 `Reading skill: <skill>`
+  - `projects` list/search → 👀 `Searching for projects`; `projects view <name>` → 📖 `Reading project: <name>`
+  - `web_search` → 🌐 `Searching`; `web_extract` → 📄 `Extracting`
+  - `subagent` → 🤖 `Using Sub Agent`; `send_to_subagent` → 📨 `Sending message`
+    (then ✉️ `Sent message` once delivered)
+  - read / write / edit / bash / grep → 📖 `Reading` / ✍️ `Writing` / ✏️ `Editing` /
+    💻 `Running` / 🔎 `Searching`
+  - any other tool → 🧰 `Using <tool>`
+
+**Sub-agent activity** lives in the FOOTER, beside the thread counter and left of
+
+the provider/model — `🤖(📄 Extracting, 🌐 Searching) • 🧵 0/3 • (opencode-go)
+deepseek-v4-flash • 🛡️  Normal • high` — animated while any worker runs. Every
+worker shows in **slot order** (position 1 is always the first sub-agent's
+activity, position 2 the second, …) comma-joined inside `🤖(…)`: e.g.
+`🤖(📄 Extracting)` (one worker), `🤖(📄 Extracting, 🌐 Searching)` (two),
+`🤖(📖 Reading skill: X, 🧠 Thinking)` (mixed). Fully **dynamic**: any number of
+workers up to the configured `subagent.maxConcurrent` are shown. The status
+strip stays the MAIN agent's (Working / Thinking / tool chips).
 
 The footer shows a **task tracker** in the middle of the stats bar whenever a
 task graph is active: per-step chips for small plans (`1✓ 2▶ 3 4` — green done,
@@ -485,6 +548,30 @@ If no extension or saved decision applies, `defaultProjectTrust` controls the fa
 
 Use `/trust` in interactive mode to save a project trust decision for future sessions, including trust for the immediate parent folder. It writes `~/.porcupine/agent/trust.json` only; the current session is not reloaded, so restart porcupine for changes to take effect.
 
+## Updates and sync
+
+Porcupine checks for a newer release on startup (npm registry for the installed
+package, with GitHub releases as a fallback) and shows **`🆕 vX.Y.Z available`**
+beside the version in the header when one exists, plus a notification box.
+Results are cached for 24h so startup stays instant. Disable with
+`"updateCheck": false` in settings, or change the cache with
+`"updateCheckIntervalHours": N`.
+
+- **`/update`** — force a fresh check and show current vs latest + install steps.
+- **`porcupine update [--yes]`** — CLI check; `--yes` runs the npm install
+  (`npm install -g --ignore-scripts <pkg>@latest`) and tells you to restart.
+- **`porcupine sync [--force]`** — sync the shipped agent-home files
+  (PROMPT.md, AGENTS.md, PERSONALITY.md, SYSTEM.md, APPEND_SYSTEM.md) into
+  `~/.porcupine/agent/`. Files you haven't edited (tracked by stored hash) are
+  updated automatically; **files you modified are skipped** (reported) unless
+  you pass `--force`. This is how the live prompt files stay current with the
+  package after an update.
+
+Update sources: an explicit product URL (`PORCUPINE_LATEST_VERSION_URL`), else
+npm registry, else GitHub (`PORCUPINE_UPDATE_GITHUB_REPO`, default
+`Abd0r/porcupineai`). `PORCUPINE_SKIP_VERSION_CHECK` or offline mode disables
+the check.
+
 ## Exporting and Sharing Sessions
 
 Use `/export [file]` to write a session to HTML.
@@ -526,6 +613,7 @@ See [Porcupine Packages](packages.md) for package sources and security notes.
 | --------------------- | --------------------------------------------------------- |
 | default               | Interactive mode                                          |
 | `-p`, `--print`       | Print response and exit                                   |
+| `--headless`          | Headless task mode: run the prompt to completion, print the final report, and exit `0` on success / `1` on error or abort (CI-friendly; honors saved trust or `--approve`) |
 | `--mode json`         | Output all events as JSON lines; see [JSON mode](json.md) |
 | `--mode rpc`          | RPC mode over stdin/stdout; see [RPC mode](rpc.md)        |
 | `--export <in> [out]` | Export a session to HTML                                  |
@@ -656,16 +744,25 @@ porcupine --exclude-tools ask_question
 Porcupine can spawn an **isolated sub-agent** to offload focused, self-contained work so the main conversation stays clean.
 
 - The main agent calls the `subagent` tool with an exact task (plus optional notes). Sub-agents are **agent-managed**: you never talk to them directly. The tool returns immediately — the main agent **keeps working while the sub-agent runs in the background**, and the report is injected into the session **instantly** when it finishes: steered into the running turn if the main agent is mid-task, or a fresh turn is started if it is idle. It never waits for the next user prompt.
-- Each sub-agent gets a **fresh context window** (128K–256K tokens, default 256K), its **own curated tool set** (filesystem, shell, web, edit/write — no interactive tools), and a **hard step budget** (default 30 tool calls).
+- Each sub-agent gets a **fresh context window** (128K–256K tokens, default 256K), the **whole tool stack** minus agent-level tools (no `subagent` recursion, no `ask_question`, no `computer_use`, no `tasks`/`projects` — but with `capability_search`, so the full skill catalog is reachable via `read SKILL.md`), and a **hard step budget** (default 120 tool calls, see [Sub-agents](subagents.md)).
 - Sub-agents run on their **own model** — cheap/small by default (unset = the parent model; recommended: `opencode-go/deepseek-v4-flash`). Configure via `subagent.model` in settings.
 - Sub-agents share your **cwd, permission policy, and safety gates** — Ask mode still confirms their flagged commands. They cannot spawn sub-agents and cannot ask the user questions.
-- **UI**: while a sub-agent runs, the terminal splits — the main agent keeps **2/3** of the screen, the sub-agent panel takes **1/3**. The panel is **multi-slot**: `🧵 Sub-agents 2/3` with one line per running sub-agent (what it's working on, step count, last tool) and dim idle slots. Up to **3** sub-agents run at a time by default (`subagent.maxConcurrent`, user-configurable — edit `subagent.maxConcurrent` in settings.json or ask the agent).
+- **UI**: sub-agent activity lives in the footer — the animated chip beside the
+  thread counter (`🤖(📄 Extracting, 🌐 Searching) • 🧵 0/3 • (opencode-go) …`); no
+  split panel. Up to **3** sub-agents run at a time by default
+  (`subagent.maxConcurrent`, user-configurable — edit `subagent.maxConcurrent`
+  in settings.json or ask the agent).
 - **WoT (Web of Thoughts) — live peer messaging**: assign the same `peerGroup` to sub-agents that should coordinate, and they can message each other **and you, instantly** (injected into the recipient's live context — not gated on reports):
   - Sub→Sub: `send_message` / `check_messages` tools, only within the same group (the main agent decides the group at spawn; default = fully isolated)
   - Sub→Main: `send_message` to `@main` — lands in the main agent's context immediately (steered mid-turn, or a fresh turn when idle)
   - Main→Sub: the **`send_to_subagent`** tool steers any running sub-agent — the message lands in its context before its next step
   - Every routed message is audited on the bus (`session.subagentMessageBus`)
-- **Stopping sub-agents**: press **Escape** (with an empty editor) to cancel all running background sub-agents — the session shows `⏹ Sub-agents cancelled`. Cancelled runs report `⏹ cancelled` instead of completing. Session abort and teardown also cancel them.
+- **Stopping sub-agents**: the main agent can stop workers directly with the
+  `stop_subagent` tool — one by id or all at once (`stop_subagent {}`) — when a
+  worker is stuck, off-track, or no longer needed; a stopped run reports
+  `⏹ cancelled` instead of completing. The user can also press **Escape** (with
+  an empty editor) to cancel all running sub-agents — the session shows
+  `⏹ Sub-agents cancelled`. Session abort and teardown also cancel them.
 - When the sub-agent finishes, the parent receives a structured report (summary, steps, context used) and folds it into its work immediately — the report lands in the transcript and model context the moment it completes, without a user prompt.
 
 ## Voice Mode
