@@ -1,0 +1,6 @@
+# monorepo dev junk must not ship; root node_modules holds the bundled @porcupineai internals
+Porcupine/node_modules/
+Porcupine/packages/*/node_modules/
+**/.venv/
+**/__pycache__/
+*.pyc
