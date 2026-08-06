@@ -87,3 +87,11 @@ Read [Security](Porcupine/packages/coding-agent/docs/security.md) and [Container
 ## License
 
 [MIT](LICENSE).
+
+---
+
+<p align="center">
+  <a href="https://github.com/Abd0r/porcupineai">GitHub</a> ·
+  <a href="https://www.npmjs.com/package/@porcupineai/porcupineai">npm</a> ·
+  <a href="LICENSE">MIT License</a>
+</p>
