@@ -26,7 +26,7 @@ Porcupine is a local terminal coding agent for working inside real repositories.
 
 It is marketed and built as a <strong>safe autonomous agent</strong>: autonomous initiative for getting work done (Auto mode, self-recovery, verify-don't-ask) wrapped in explicit safety boundaries (fail-closed gates, hardline blocks, attended-only tasks and cron, confirmation-gated computer use). The autonomy is designed to get real work done — not to run away from the user.
 
-It is built on top of Pi (MIT), but it is its own product: all packages are named `@porcupine/*` and the CLI binary is `porcupine`.
+It is built on top of Pi (MIT), but it is its own product: all packages are published under the [porcupineai npm org](https://www.npmjs.com/org/porcupineai) and the CLI binary is `porcupine`.
 
 ## Recommended model: DeepSeek V4 Flash via OpenCode Go
 
@@ -48,7 +48,7 @@ GLM, MiniMax, and GPT/Grok-class models — see [Models](Porcupine/packages/codi
 - **Plans without pretending.** `/plan <objective>` inspects the workspace and saves an implementation-ready Markdown plan without changing source code. `/goal <objective>` runs a bounded session goal loop.
 - **Makes interaction policy visible.** `/modes` switches between Ask, Normal, and Auto. Reasoning depth is controlled separately from permission to act.
 - **Speaks back.** `/voice` turns your mic into an input — press Space to talk. Audio-capable models (Gemini 3.x, Inkling) hear the audio natively; text-only models use on-device Moonshine STT + Kokoro TTS. Models auto-download on first use, nothing ships.
-- **Delegates to isolated sub-agents.** The `subagent` tool spawns a focused worker with its own context window (128K–256K), curated tools, and hard step/context budgets — cheap model by default, one at a time, with a live progress panel that splits the TUI 2/3 (main agent) / 1/3 (sub-agent).
+- **Delegates to isolated sub-agents.** The `subagent` tool spawns a focused worker with its own context window (128K–256K), curated tools, and hard step/context budgets — cheap model by default, up to 3 at a time (`subagent.maxConcurrent`), with a live multi-slot panel (`Sub-agents 2/3`) and instant report injection.
 - **Works from your phone.** Set `PORCUPINE_TELEGRAM_TOKEN` (and `PORCUPINE_TELEGRAM_ALLOW` for your chat id) and the TUI starts a Telegram bridge: messages you send appear in the TUI, responses come back to both, and Ask-mode decisions arrive as Approve/Deny buttons or question options.
 - **Works with real code.** Built-in file, shell, discovery, web, memory, session-search, and guarded computer-use capabilities are grouped under inspectable stacks. Run `/stacks [query]` to explore them.
 - **Finds ongoing work quickly.** Run `/projects [query]` to list or search canonical `Project/<name>/` workspaces by name, README, or current status.
@@ -62,7 +62,7 @@ GLM, MiniMax, and GPT/Grok-class models — see [Models](Porcupine/packages/codi
 ### Option A — from source (recommended for v0.1)
 
 ```bash
-git clone https://github.com/Abd0r/porcupine.git
+git clone https://github.com/Abd0r/porcupineai.git
 cd porcupine
 cd Porcupine
 npm install --ignore-scripts
