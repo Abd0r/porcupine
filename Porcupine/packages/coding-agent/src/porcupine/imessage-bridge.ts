@@ -82,6 +82,12 @@ export class IMessageBridge {
 		});
 	}
 
+	/** Send an outbound notification to the most recently active chat (if any). Attended-only; silently skipped when no chat has prompted yet. */
+	async notifyTaskResult(text: string): Promise<void> {
+		if (!text || this.activeChatId === undefined) return;
+		await this.sendText(this.activeChatId, text).catch(() => {});
+	}
+
 	async sendText(chatId: string, text: string): Promise<void> {
 		if (!text) return;
 		for (let i = 0; i < text.length; i += SEND_CHUNK) {

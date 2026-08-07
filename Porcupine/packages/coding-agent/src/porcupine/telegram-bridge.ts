@@ -196,6 +196,12 @@ export class TelegramBridge {
 	}
 
 	/** Send a local file as a Telegram document (multipart upload). */
+	/** Send an outbound notification to the most recently active chat (if any). Attended-only; silently skipped when no chat has prompted yet. */
+	async notifyTaskResult(text: string): Promise<void> {
+		if (!text || this.activeChatId === undefined) return;
+		await this.sendText(this.activeChatId, text).catch(() => {});
+	}
+
 	async sendDocument(chatId: number, filePath: string): Promise<void> {
 		const resolved = filePath.startsWith("~") ? join(homedir(), filePath.slice(1)) : filePath;
 		const buffer = await readFile(resolved);

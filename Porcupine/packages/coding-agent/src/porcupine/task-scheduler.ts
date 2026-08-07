@@ -9,6 +9,39 @@ export type TaskRunTrigger =
 	| { type: "manual"; claimRunId?: string }
 	| { type: "cron"; scheduleId: string; claimRunId?: string };
 
+/** Terminal states worth notifying a chat bridge about. */
+export type TaskRunResultStatus = Extract<PorcupineTaskRunStatus, "completed" | "failed">;
+
+/**
+ * Payload delivered when a task run reaches a terminal {@link TaskRunResultStatus}.
+ * Drive this toward chat bridges (Telegram / Discord / iMessage) so an
+ * attended user learns a scheduled or queued task finished without waiting in
+ * the TUI. Carries enough to build a short, human-readable line: task title,
+ * status, trigger, and a single-line summary.
+ */
+export interface TaskRunResultNotification {
+	taskId: string;
+	runId: string;
+	title: string;
+	status: TaskRunResultStatus;
+	trigger: { type: "manual" | "cron" };
+	/** Short one-line message describing the outcome for bridge display. */
+	summary: string;
+}
+
+/** Build the single-line bridge message for a completed/failed task run. */
+export function formatTaskRunResultSummary(input: {
+	title: string;
+	status: TaskRunResultStatus;
+	trigger: { type: "manual" | "cron" };
+	detail: string;
+}): string {
+	const icon = input.status === "completed" ? "✅" : "❌";
+	const source = input.trigger.type === "cron" ? "cron" : "manual";
+	const detail = input.detail.trim().replace(/\s+/g, " ").slice(0, 120);
+	return `${icon} Task "${input.title}" ${input.status} (${source})${detail ? `: ${detail}` : ""}`;
+}
+
 /**
  * Whether the attended task drain may adopt a claim right now.
  * A task run may start only while the session is open and fully idle — no live
@@ -292,11 +325,22 @@ function getTask(data: TaskStoreData, id: string): PorcupineTask {
 export class PorcupineTaskStore {
 	readonly agentDir: string;
 	private data: TaskStoreData;
+	private taskRunResultNotifier: ((notification: TaskRunResultNotification) => void) | undefined;
 
 	constructor(agentDir: string) {
 		this.agentDir = agentDir;
 		this.data = readStore(agentDir);
 		this.recoverInterruptedRuns();
+	}
+
+	/**
+	 * Register a callback invoked when a run reaches a terminal completed/failed
+	 * state after it is finalized and persisted. No-op (silently skipped) when no
+	 * callback is set or when {@link notifyOnTaskCompletion} is disabled by the
+	 * caller. Kept out of the store's save path: it is fire-and-forget fan-out.
+	 */
+	setTaskRunResultNotifier(notifier: ((notification: TaskRunResultNotification) => void) | undefined): void {
+		this.taskRunResultNotifier = notifier;
 	}
 
 	private save(): void {
@@ -551,6 +595,23 @@ export class PorcupineTaskStore {
 					delete schedule.claimedRunId;
 					schedule.updatedAt = now;
 				}
+			}
+			if ((status === "completed" || status === "failed") && this.taskRunResultNotifier) {
+				const detail = status === "completed" ? (output.result ?? "") : (output.error ?? "");
+				const triggerType = run.trigger.type === "cron" ? "cron" : "manual";
+				this.taskRunResultNotifier({
+					taskId: task.id,
+					runId: run.id,
+					title: task.title,
+					status,
+					trigger: { type: triggerType },
+					summary: formatTaskRunResultSummary({
+						title: task.title,
+						status,
+						trigger: { type: triggerType },
+						detail,
+					}),
+				});
 			}
 			return run;
 		});

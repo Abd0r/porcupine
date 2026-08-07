@@ -163,6 +163,7 @@ export interface Settings {
 	websocketConnectTimeoutMs?: number; // WebSocket connect/open handshake timeout in milliseconds; 0 disables it
 	uiMode?: UiMode; // default: "regular"
 	fullscreenScrollbar?: ScrollViewScrollbar; // default: "auto"; no effect in regular UI mode
+	notifyOnTaskCompletion?: boolean; // default: true - notify chat bridges when a task run completes or fails
 }
 
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
@@ -1218,6 +1219,16 @@ export class SettingsManager {
 	setFullscreenScrollbar(mode: ScrollViewScrollbar): void {
 		this.globalSettings.fullscreenScrollbar = mode;
 		this.markModified("fullscreenScrollbar");
+		this.save();
+	}
+
+	getNotifyOnTaskCompletion(): boolean {
+		return this.settings.notifyOnTaskCompletion ?? true;
+	}
+
+	setNotifyOnTaskCompletion(enabled: boolean): void {
+		this.globalSettings.notifyOnTaskCompletion = enabled;
+		this.markModified("notifyOnTaskCompletion");
 		this.save();
 	}
 

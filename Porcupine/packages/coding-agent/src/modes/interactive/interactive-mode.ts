@@ -169,6 +169,7 @@ import {
 	PorcupineTaskStore,
 	parseCronCommand,
 	parseTaskCommand,
+	type TaskRunResultNotification,
 	type TaskRunTrigger,
 } from "../../porcupine/task-scheduler.ts";
 import { extractAssistantText, formatBridgeStatus, TelegramBridge } from "../../porcupine/telegram-bridge.ts";
@@ -490,6 +491,7 @@ interface RemoteBridgeLike {
 		opts?: { signal?: AbortSignal },
 	): Promise<string | undefined>;
 	handleAgentEnd(messages: readonly AgentMessage[], willRetry: boolean): Promise<void>;
+	notifyTaskResult(text: string): Promise<void>;
 }
 
 export class InteractiveMode {
@@ -2074,6 +2076,24 @@ export class InteractiveMode {
 				for (const bridge of this.remoteBridges) {
 					void bridge.handleAgentEnd(event.messages, event.willRetry);
 				}
+			}
+		});
+		this.wireTaskRunResultNotifications();
+	}
+
+	/**
+	 * Notify running chat bridges when a task run reaches a terminal state,
+	 * unless the user disabled {@link Settings.notifyOnTaskCompletion}
+	 * (default on). Attended-only: bridges are already restricted to the running
+	 * interactive session, and with no bridge connected the notifier is a no-op.
+	 */
+	private wireTaskRunResultNotifications(): void {
+		this.taskStore.setTaskRunResultNotifier((notification: TaskRunResultNotification) => {
+			if (!this.settingsManager.getNotifyOnTaskCompletion()) return;
+			const bridges = this.remoteBridges;
+			if (bridges.length === 0) return;
+			for (const bridge of bridges) {
+				void bridge.notifyTaskResult(notification.summary);
 			}
 		});
 	}

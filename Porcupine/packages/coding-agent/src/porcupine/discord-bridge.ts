@@ -131,6 +131,12 @@ export class DiscordBridge {
 		return response.json() as Promise<unknown>;
 	}
 
+	/** Send an outbound notification to the most recently active channel (if any). Attended-only; silently skipped when no channel has prompted yet. */
+	async notifyTaskResult(text: string): Promise<void> {
+		if (!text || this.activeChannelId === undefined) return;
+		await this.sendText(this.activeChannelId, text).catch(() => {});
+	}
+
 	async sendText(channelId: string, text: string): Promise<string | undefined> {
 		if (!text) return undefined;
 		let lastId: string | undefined;
