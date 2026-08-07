@@ -44,7 +44,11 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "copy", description: "Copy last agent message to clipboard" },
 	{ name: "name", description: "Set session display name" },
 	{ name: "session", description: "Show session info and stats" },
+	// anchor: usage-and-cost
+	{ name: "usage", description: "Show per-turn token usage and totals for this session" },
+	{ name: "cost", description: "Show estimated token cost for this session" },
 	{ name: "changelog", description: "Show changelog entries" },
+	{ name: "view", description: "Open a markdown file in the full-screen viewer", argumentHint: "<path>" },
 	{ name: "hotkeys", description: "Show all keyboard shortcuts" },
 	{
 		name: "fork",
@@ -138,6 +142,15 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "learning",
 		description: "Show autonomous learning evidence graph",
 		argumentHint: "[graph|history]",
+	},
+	{
+		name: "memory",
+		description: "Show what Porcupine has stored about you and the environment",
+	},
+	{
+		name: "init",
+		description: "Generate/merge a compact AGENTS.md project context file",
+		argumentHint: "[--force]",
 	},
 	{
 		name: "goal",

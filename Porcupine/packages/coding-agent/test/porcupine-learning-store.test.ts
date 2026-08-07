@@ -6,6 +6,7 @@ import { BUILTIN_SLASH_COMMANDS } from "../src/core/slash-commands.ts";
 import { parseLearningCommand } from "../src/modes/interactive/learning-command.ts";
 import { getSkillStats } from "../src/porcupine/evidence-counter.ts";
 import {
+	appendSkillLearningEntry,
 	applyLearningProposal,
 	buildLearningGraph,
 	listLearningEvents,
@@ -49,6 +50,11 @@ describe("autonomous post-turn learning", () => {
 		const record = result.records[0]!;
 		expect(record.status).toBe("activated");
 		expect(existsSync(join(agentDir, "skills", record.stack!, record.id, "SKILL.md"))).toBe(true);
+		// The portable Learnings.md companion is appended next to the SKILL.md.
+		expect(existsSync(join(agentDir, "skills", record.stack!, record.id, "Learnings.md"))).toBe(true);
+		expect(readFileSync(join(agentDir, "skills", record.stack!, record.id, "Learnings.md"), "utf8")).toContain(
+			"recovery guidance for failed bash calls",
+		);
 
 		const graph = buildLearningGraph(agentDir);
 		expect(graph.activatedRecords).toBe(1);
@@ -176,5 +182,45 @@ describe("/learning", () => {
 			description: "Show autonomous learning evidence graph",
 			argumentHint: "[graph|history]",
 		});
+	});
+});
+
+describe("appendSkillLearningEntry (Learnings.md companion)", () => {
+	it("appends a dated entry in the skill directory without clobbering", () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "porcupine-learnings-"));
+		const first = appendSkillLearningEntry(agentDir, {
+			id: "learned-bash",
+			stack: "shell",
+			kind: "skill",
+			summary: "Recover from bash failures.",
+		});
+		expect(first).toBe(join(agentDir, "skills/shell/learned-bash/Learnings.md"));
+		const content = readFileSync(first!, "utf8");
+		expect(content).toContain("# Learnings");
+		expect(content).toMatch(/^- \d{4}-\d{2}-\d{2}: \[skill\/shell\] Recover from bash failures\.$/m);
+
+		// Appending to an existing file preserves prior content and adds the header once.
+		appendSkillLearningEntry(agentDir, {
+			id: "learned-bash",
+			stack: "shell",
+			kind: "skill",
+			summary: "A second bash recovery note.",
+		});
+		const updated = readFileSync(first!, "utf8");
+		expect(updated).toContain("A second bash recovery note.");
+		expect(updated.match(/# Learnings\n/g)).toHaveLength(1); // header added only once
+	});
+
+	it("returns undefined when the exact entry is already present", () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "porcupine-learnings-dedupe-"));
+		const path = appendSkillLearningEntry(agentDir, {
+			id: "learned-git",
+			stack: "vcs",
+			summary: "Recover git history.",
+		});
+		expect(path).toBeDefined();
+		expect(
+			appendSkillLearningEntry(agentDir, { id: "learned-git", stack: "vcs", summary: "Recover git history." }),
+		).toBeUndefined();
 	});
 });

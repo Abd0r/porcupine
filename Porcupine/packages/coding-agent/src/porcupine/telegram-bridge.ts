@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { AgentMessage } from "@porcupineai/agent-core";
 import type { AssistantMessage } from "@porcupineai/ai";
+import { type BridgeCommandContext, handleBridgeCommand, parseBridgeCommand } from "./bridge-commands.ts";
 
 export interface TelegramBridgeOptions {
 	/** Bot token from @BotFather. */
@@ -161,6 +162,8 @@ export class TelegramBridge {
 	private pollPromise: Promise<void> | undefined;
 	/** Consecutive update-handling failures; after a cap an update is dead-lettered so one stuck update can't stall the poll. */
 	private consecutiveFailures = 0;
+	/** Epoch ms when the bridge started polling; drives the !status uptime line. */
+	private startedAt: number | undefined;
 
 	constructor(options: TelegramBridgeOptions) {
 		this.options = options;
@@ -172,6 +175,11 @@ export class TelegramBridge {
 
 	get pendingTurns(): number {
 		return this.pendingTelegram.length;
+	}
+
+	/** Seconds the bridge has been polling (used by the !status command). */
+	get uptimeSeconds(): number | undefined {
+		return this.startedAt === undefined ? undefined : (Date.now() - this.startedAt) / 1000;
 	}
 
 	private api(method: string, params: Record<string, string>): Promise<unknown> {
@@ -392,6 +400,7 @@ export class TelegramBridge {
 	async start(): Promise<void> {
 		if (this.running) return;
 		this.running = true;
+		this.startedAt = Date.now();
 		await Promise.all([this.registerCommands(), this.setPresence("🟢 Online")]).catch(() => {});
 		// Drain updates that accumulated while we were offline (e.g. after a
 		// restart, offset resets to 0). Replaying them would re-prompt the agent
@@ -415,6 +424,7 @@ export class TelegramBridge {
 		this.running = false;
 		await this.setPresence("🔴 Offline").catch(() => {});
 		await this.pollPromise;
+		this.startedAt = undefined;
 	}
 
 	/** Register the bot's / command menu (Hermes-style). */
@@ -531,6 +541,26 @@ export class TelegramBridge {
 		await this.api("answerCallbackQuery", { callback_query_id: query.id });
 	}
 
+	/**
+	 * Resolve a '!' control command and reply to the sender chat through the
+	 * notifyTaskResult send path (the bridge is already restricted to the owner
+	 * allowlist by the caller here). Returns undefined when the text is not a
+	 * command so the message falls through to normal prompt handling.
+	 */
+	private replyToCommand(chatId: number, text: string): string | undefined {
+		const parsed = parseBridgeCommand(text);
+		if (parsed === null) return undefined;
+		const context: BridgeCommandContext = {
+			uptimeSeconds: this.uptimeSeconds,
+			sessionActive: this.running,
+			statusText: this.options.getStatus?.() ?? "",
+		};
+		const reply = handleBridgeCommand(parsed, { context });
+		this.activeChatId = chatId;
+		void this.notifyTaskResult(reply).catch(() => {});
+		return reply;
+	}
+
 	private async handleMessage(message: TelegramMessage): Promise<void> {
 		const chatId = message.chat.id;
 		if (!this.isAllowed(chatId)) {
@@ -553,6 +583,11 @@ export class TelegramBridge {
 			this.pendingTextRequest = undefined;
 			request.resolve(text);
 			return;
+		}
+
+		// '!' control commands (owner chat only, already enforced above).
+		if (text.startsWith("!")) {
+			if (this.replyToCommand(chatId, text) !== undefined) return;
 		}
 
 		if (text === "/start") {

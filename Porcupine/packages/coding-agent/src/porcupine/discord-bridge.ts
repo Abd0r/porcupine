@@ -15,6 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@porcupineai/agent-core";
+import { type BridgeCommandContext, handleBridgeCommand, parseBridgeCommand } from "./bridge-commands.ts";
 import { extractAssistantText, lastUserMessageText, summarizeToolCalls, textsMatch } from "./telegram-bridge.ts";
 
 const GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
@@ -80,6 +81,8 @@ export class DiscordBridge {
 	private selfId: string | undefined;
 	private heartbeatIntervalMs = 0;
 	private heartbeatWithSeq = false;
+	/** Epoch ms when the bridge connected; drives the !status uptime line. */
+	private startedAt: number | undefined;
 
 	/** Discord-originated prompts awaiting their response turn (provenance match). */
 	private pendingDiscord: Array<{ channelId: string; text: string }> = [];
@@ -102,6 +105,11 @@ export class DiscordBridge {
 
 	get pendingTurns(): number {
 		return this.pendingDiscord.length;
+	}
+
+	/** Seconds the bridge has been connected (used by the !status command). */
+	get uptimeSeconds(): number | undefined {
+		return this.startedAt === undefined ? undefined : (Date.now() - this.startedAt) / 1000;
 	}
 
 	// ---------------------------------------------------------------------
@@ -409,6 +417,26 @@ export class DiscordBridge {
 		return this.options.allowlist.includes(channelId);
 	}
 
+	/**
+	 * Resolve a '!' control command and reply to the sender channel through the
+	 * notifyTaskResult send path (the bridge is already restricted to the owner
+	 * allowlist here). Returns undefined when the text is not a command so the
+	 * message falls through to normal prompt handling.
+	 */
+	private replyToCommand(channelId: string, text: string): string | undefined {
+		const parsed = parseBridgeCommand(text);
+		if (parsed === null) return undefined;
+		const context: BridgeCommandContext = {
+			uptimeSeconds: this.uptimeSeconds,
+			sessionActive: this.running,
+			statusText: this.options.getStatus?.() ?? "",
+		};
+		const reply = handleBridgeCommand(parsed, { context });
+		this.activeChannelId = channelId;
+		void this.notifyTaskResult(reply).catch(() => {});
+		return reply;
+	}
+
 	private async handleMessage(message: DiscordMessage): Promise<void> {
 		if (message.author?.id === this.selfId || message.author?.bot) return;
 		const channelId = message.channel_id;
@@ -422,6 +450,11 @@ export class DiscordBridge {
 			this.pendingTextRequest = undefined;
 			request.resolve(text);
 			return;
+		}
+
+		// '!' control commands (owner-channel only, already enforced above).
+		if (text.startsWith("!")) {
+			if (this.replyToCommand(channelId, text) !== undefined) return;
 		}
 
 		if (text === "/status") {
@@ -489,6 +522,7 @@ export class DiscordBridge {
 	async start(): Promise<void> {
 		if (this.running) return;
 		this.running = true;
+		this.startedAt = Date.now();
 		this.connect();
 	}
 

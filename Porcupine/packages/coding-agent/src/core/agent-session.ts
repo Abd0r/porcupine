@@ -115,6 +115,13 @@ import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.ts";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionManager } from "./session-manager.ts";
 import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader } from "./session-manager.ts";
+import {
+	type CostBreakdownLine,
+	formatCostSummary,
+	formatUsageTable,
+	type SessionUsageMeta,
+	SessionUsageTracker,
+} from "./session-usage.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
@@ -991,6 +998,10 @@ export class AgentSession {
 	// Track last assistant message for auto-compaction check
 	private _lastAssistantMessage: AssistantMessage | undefined = undefined;
 
+	// Live per-turn usage accumulator for /usage and /cost. In-memory per session;
+	// rebuilt from persisted entries on demand so it never goes stale across turns.
+	private _sessionUsage = new SessionUsageTracker();
+
 	/** Internal handler for agent events - shared by subscribe and reconnect */
 	private _handleAgentEvent = async (event: AgentEvent): Promise<void> => {
 		// When a user message starts, check if it's from either queue and remove it BEFORE emitting
@@ -1041,6 +1052,19 @@ export class AgentSession {
 				this.sessionManager.appendMessage(event.message);
 			}
 			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
+
+			// Record per-turn usage into the in-memory tracker for /usage and /cost.
+			if (event.message.role === "assistant") {
+				const assistantMsg = event.message as AssistantMessage;
+				const meta: SessionUsageMeta = {
+					provider: assistantMsg.provider,
+					model: assistantMsg.model,
+					responseModel: assistantMsg.responseModel,
+				};
+				this._sessionUsage.record(assistantMsg.usage, meta);
+			} else if (event.message.role === "toolResult" && event.message.usage) {
+				this._sessionUsage.record(event.message.usage);
+			}
 
 			// Track assistant message for auto-compaction (checked on agent_end)
 			if (event.message.role === "assistant") {
@@ -3860,6 +3884,49 @@ export class AgentSession {
 			cost: usageTotals.cost,
 			contextUsage: this.getContextUsage(),
 		};
+	}
+
+	/**
+	 * Render the /usage output: per-turn token/cost split plus session totals.
+	 * Rebuilds from persisted entries (so resurrected/resumed sessions are accurate)
+	 * but keeps the live in-memory tracker accumulated during this session.
+	 */
+	renderUsageCommand(): string {
+		const tracker = this._ensureSessionUsage();
+		const totals = tracker.getTotals();
+		const totalTokens = totals.input + totals.output + totals.cacheRead + totals.cacheWrite;
+		return formatUsageTable(tracker.turns, totals, tracker.turnCount, totalTokens);
+	}
+
+	/**
+	 * Render the /cost output: estimated session cost (reusing the ai package's
+	 * own per-model attribution) or a token summary when cost config is missing.
+	 */
+	renderCostCommand(): string {
+		const tracker = this._ensureSessionUsage();
+		const totals = tracker.getTotals();
+		const perModel: CostBreakdownLine[] = tracker.getPerModel().map((entry) => ({
+			key:
+				entry.provider && entry.model ? `${entry.provider}/${entry.responseModel ?? entry.model}` : "tools/summary",
+			cost: entry.cost,
+			tokens: entry.input + entry.output + entry.cacheRead + entry.cacheWrite,
+		}));
+		return formatCostSummary(totals, perModel, totals.cost > 0);
+	}
+
+	/** Session usage totals (input/output/cache/cost) via the live tracker. */
+	get sessionUsageTotals(): SessionUsageTracker {
+		return this._ensureSessionUsage();
+	}
+
+	private _ensureSessionUsage(): SessionUsageTracker {
+		// If this session was resumed from disk, the in-memory tracker has no
+		// entries yet; rebuild it from persisted entries so /usage and /cost are
+		// accurate from the first command. Rebuilding is idempotent and cheap.
+		if (this._sessionUsage.turnCount === 0) {
+			this._sessionUsage = SessionUsageTracker.fromEntries(this.sessionManager.getEntries());
+		}
+		return this._sessionUsage;
 	}
 
 	getContextUsage(): ContextUsage | undefined {

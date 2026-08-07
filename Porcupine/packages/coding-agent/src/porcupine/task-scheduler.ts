@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
@@ -7,7 +8,8 @@ export type PorcupineTaskStatus = "ready" | "running" | "completed" | "failed" |
 export type PorcupineTaskRunStatus = "claimed" | "running" | "completed" | "failed" | "cancelled" | "unknown";
 export type TaskRunTrigger =
 	| { type: "manual"; claimRunId?: string }
-	| { type: "cron"; scheduleId: string; claimRunId?: string };
+	| { type: "cron"; scheduleId: string; claimRunId?: string }
+	| { type: "event"; eventId: string; claimRunId?: string };
 
 /** Terminal states worth notifying a chat bridge about. */
 export type TaskRunResultStatus = Extract<PorcupineTaskRunStatus, "completed" | "failed">;
@@ -66,7 +68,22 @@ export interface PorcupineTask {
 	createdAt: string;
 	updatedAt: string;
 	runCount: number;
+	/** Run this task when the current task completes (chain link). */
+	next?: string;
+	/** Run this task when the current task fails (chain link). */
+	nextOnFail?: string;
+	/** Optional condition-based (time-independent) event trigger. */
+	trigger?: PorcupineTaskTrigger;
 }
+
+/**
+ * Condition-based event trigger evaluated by the idle drain. Cheap checks only:
+ * hash a file and compare against the last-seen state, or run a short check
+ * command and compare its exit code. Time-independent by design.
+ */
+export type PorcupineTaskTrigger =
+	| { type: "file"; path: string; matches?: string; lastHash?: string }
+	| { type: "script"; command: string; exitCode: number; lastExitCode?: number };
 
 export interface PorcupineTaskRun {
 	id: string;
@@ -322,6 +339,29 @@ function getTask(data: TaskStoreData, id: string): PorcupineTask {
 	return task;
 }
 
+/**
+ * Guard for a chain link: the target must exist and the link must not create a
+ * cycle (a path back to the source task via any chain links).
+ */
+function cleanLink(data: TaskStoreData, sourceId: string, targetId: string, label: string): void {
+	targetId = targetId.trim();
+	if (!targetId) return;
+	if (targetId === sourceId) throw new Error(`Chain cycle rejected: ${label} cannot reference itself.`);
+	getTask(data, targetId);
+	const stack = [targetId];
+	const visited = new Set<string>();
+	while (stack.length > 0) {
+		const current = stack.pop()!;
+		if (current === sourceId) throw new Error(`Chain cycle rejected: ${label} would loop back.`);
+		if (visited.has(current)) continue;
+		visited.add(current);
+		const candidate = data.tasks.find((task) => task.id === current);
+		if (!candidate) continue;
+		if (candidate.next) stack.push(candidate.next);
+		if (candidate.nextOnFail) stack.push(candidate.nextOnFail);
+	}
+}
+
 export class PorcupineTaskStore {
 	readonly agentDir: string;
 	private data: TaskStoreData;
@@ -421,7 +461,13 @@ export class PorcupineTaskStore {
 		return [...this.data.schedules].sort((left, right) => left.nextRunAt.localeCompare(right.nextRunAt));
 	}
 
-	createTask(input: { title: string; prompt: string }): PorcupineTask {
+	createTask(input: {
+		title: string;
+		prompt: string;
+		next?: string;
+		nextOnFail?: string;
+		trigger?: PorcupineTaskTrigger | null;
+	}): PorcupineTask {
 		const title = input.title.trim();
 		const prompt = input.prompt.trim();
 		if (!title || !prompt) throw new Error("Task title and prompt are required.");
@@ -436,9 +482,67 @@ export class PorcupineTaskStore {
 				updatedAt: now,
 				runCount: 0,
 			};
+			this.applyChainOptions(task.id, task, input);
 			this.data.tasks.push(task);
 			return task;
 		});
+	}
+
+	/**
+	 * Update a task's chain links (next / nextOnFail) and/or its event trigger.
+	 * Passing `null` for a link clears it. Guarded against cycles: a chain that
+	 * would loop back onto the task itself is rejected.
+	 */
+	patchTask(input: {
+		id: string;
+		next?: string | null;
+		nextOnFail?: string | null;
+		trigger?: PorcupineTaskTrigger | null;
+	}): PorcupineTask {
+		return this.mutate(() => {
+			const task = getTask(this.data, input.id);
+			const now = new Date().toISOString();
+			this.applyChainOptions(task.id, task, input);
+			task.updatedAt = now;
+			return task;
+		});
+	}
+
+	/** Returns tasks carrying an event trigger plus their last-seen state. */
+	listTriggeredTasks(): readonly (PorcupineTask & { lastState?: string })[] {
+		this.data = readStore(this.agentDir);
+		return this.data.tasks
+			.filter((task) => task.trigger !== undefined)
+			.map((task) => ({
+				...task,
+				lastState: task.trigger!.type === "file" ? task.trigger!.lastHash : `${task.trigger!.lastExitCode}`,
+			}));
+	}
+
+	/**
+	 * Apply chain links and trigger from a create/patch input onto a task while
+	 * validating references and guarding against cycles.
+	 */
+	private applyChainOptions(
+		taskId: string,
+		task: PorcupineTask,
+		input: {
+			next?: string | null;
+			nextOnFail?: string | null;
+			trigger?: PorcupineTaskTrigger | null;
+		},
+	): void {
+		const next = input.next === undefined ? task.next : input.next;
+		const nextOnFail = input.nextOnFail === undefined ? task.nextOnFail : input.nextOnFail;
+		if (input.next !== undefined) {
+			if (next !== null && next !== undefined) cleanLink(this.data, taskId, next, "next");
+			task.next = next ?? undefined;
+		}
+		if (input.nextOnFail !== undefined) {
+			if (nextOnFail !== null && nextOnFail !== undefined) cleanLink(this.data, taskId, nextOnFail, "nextOnFail");
+			task.nextOnFail = nextOnFail ?? undefined;
+		}
+		if (input.trigger !== undefined) task.trigger = input.trigger ?? undefined;
 	}
 
 	setTaskStatus(id: string, status: Extract<PorcupineTaskStatus, "ready" | "paused" | "cancelled">): PorcupineTask {
@@ -521,14 +625,91 @@ export class PorcupineTaskStore {
 		});
 	}
 
-	/** Claimed manual runs awaiting execution by the idle drain (oldest first). */
+	/**
+	 * Claimed manual/event runs awaiting execution by the idle drain (oldest
+	 * first). Evaluating pending event triggers happens first so condition-based
+	 * tasks drain through the same attended-only adoption path as queued runs.
+	 */
 	claimQueuedRuns(maximumClaims = Number.POSITIVE_INFINITY): readonly PorcupineTaskRun[] {
+		const pendingEvent = this.claimEventTriggeredRuns(maximumClaims);
 		this.data = readStore(this.agentDir);
-		return this.data.runs
-			.filter((run) => run.status === "claimed" && run.trigger.type === "manual")
+		const merged = new Map<string, PorcupineTaskRun>();
+		for (const run of pendingEvent) merged.set(run.id, run);
+		for (const run of this.data.runs) {
+			if (run.status === "claimed" && (run.trigger.type === "manual" || run.trigger.type === "event")) {
+				merged.set(run.id, { ...run });
+			}
+		}
+		return [...merged.values()]
 			.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-			.slice(0, maximumClaims)
-			.map((run) => ({ ...run }));
+			.slice(0, maximumClaims);
+	}
+
+	/**
+	 * Evaluate pending event-triggered tasks and claim a run for each whose
+	 * condition currently fires (file content changed; script exited with the
+	 * expected code). Cheap checks only. Keeps the attended-only drain intact: the
+	 * returned claimed runs are adopted only when the session is idle.
+	 */
+	claimEventTriggeredRuns(maximumClaims = Number.POSITIVE_INFINITY): readonly PorcupineTaskRun[] {
+		return this.mutate(() => {
+			const now = new Date().toISOString();
+			const claimed: PorcupineTaskRun[] = [];
+			for (const task of this.data.tasks) {
+				if (claimed.length >= maximumClaims) break;
+				if (!task.trigger || task.status === "paused" || task.status === "cancelled") continue;
+				const check = this.checkTrigger(task.trigger);
+				if (check.fired) {
+					const run: PorcupineTaskRun = {
+						id: `run-${randomUUID().slice(0, 8)}`,
+						taskId: task.id,
+						trigger: { type: "event", eventId: task.id },
+						status: "claimed",
+						createdAt: now,
+						claimedAt: now,
+						startedAt: now,
+					};
+					this.data.runs.push(run);
+					claimed.push({ ...run });
+				}
+				if (task.trigger.type === "file") {
+					task.trigger.lastHash = check.state;
+				} else if (task.trigger.type === "script") {
+					task.trigger.lastExitCode = check.exitCode;
+				}
+				task.updatedAt = now;
+			}
+			return claimed;
+		});
+	}
+
+	/**
+	 * Cheap condition check for one event trigger. File triggers hash content and
+	 * report fired only when the hash differs from the last-seen hash; a script
+	 * trigger reports fired when its command exits with the expected code.
+	 */
+	private checkTrigger(trigger: PorcupineTaskTrigger): { fired: boolean; state: string; exitCode: number } {
+		if (trigger.type === "file") {
+			const path = trigger.path;
+			if (!existsSync(path)) return { fired: false, state: "missing", exitCode: -1 };
+			const content = readFileSync(path, "utf8");
+			const hash = createHash("sha256").update(content).digest("hex");
+			const matches = trigger.matches ? new RegExp(trigger.matches).test(content) : true;
+			const fired = matches && trigger.lastHash !== undefined && trigger.lastHash !== hash;
+			return { fired, state: hash, exitCode: -1 };
+		}
+		const exitCode = this.runCheckCommand(trigger.command);
+		return { fired: exitCode === trigger.exitCode, state: `${exitCode}`, exitCode };
+	}
+
+	/** Execute the trigger check command with a short timeout, returning its exit code. */
+	private runCheckCommand(command: string): number {
+		try {
+			execFileSync(command, { shell: true, timeout: 3_000, stdio: "ignore" });
+			return 0;
+		} catch (error) {
+			return (error as { status?: number }).status ?? 1;
+		}
 	}
 
 	/**
@@ -595,6 +776,14 @@ export class PorcupineTaskStore {
 					delete schedule.claimedRunId;
 					schedule.updatedAt = now;
 				}
+			}
+			// Task chaining: on completion enqueue the linked-after task; on failure
+			// enqueue the next-on-fail task. Skipped silently when the link is
+			// missing or the target is paused/cancelled.
+			if (status === "completed" && task.next) {
+				this.enqueueChain(task.next);
+			} else if (status === "failed" && task.nextOnFail) {
+				this.enqueueChain(task.nextOnFail);
 			}
 			if ((status === "completed" || status === "failed") && this.taskRunResultNotifier) {
 				const detail = status === "completed" ? (output.result ?? "") : (output.error ?? "");
@@ -691,5 +880,23 @@ export class PorcupineTaskStore {
 			}
 			return claimed;
 		});
+	}
+
+	/** Queue a chained task for the next idle drain (no-op when skipped). */
+	private enqueueChain(targetId: string): void {
+		const target = this.data.tasks.find((task) => task.id === targetId);
+		if (!target) return;
+		if (target.status === "paused" || target.status === "cancelled") return;
+		const now = new Date().toISOString();
+		const run: PorcupineTaskRun = {
+			id: `run-${randomUUID().slice(0, 8)}`,
+			taskId: target.id,
+			trigger: { type: "manual" },
+			status: "claimed",
+			createdAt: now,
+			claimedAt: now,
+			startedAt: now,
+		};
+		this.data.runs.push(run);
 	}
 }

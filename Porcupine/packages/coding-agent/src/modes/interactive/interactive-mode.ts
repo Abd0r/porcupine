@@ -96,6 +96,8 @@ import type { UiMode } from "../../core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
+import { resolveReadPathAsync } from "../../core/tools/path-utils.ts";
+import { SHOW_MARKDOWN_MAX_BYTES } from "../../core/tools/show-markdown.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
@@ -3590,6 +3592,17 @@ export class InteractiveMode {
 				return;
 			}
 
+			if (text.startsWith("/view ")) {
+				const viewPath = text.slice("/view ".length).trim();
+				this.editor.setText("");
+				if (!viewPath) {
+					this.showWarning("Usage: /view <path>");
+					return;
+				}
+				await this.handleViewCommand(viewPath);
+				return;
+			}
+
 			if (text === "/guide" || text.startsWith("/guide ")) {
 				this.handleGuideCommand(text);
 				this.editor.setText("");
@@ -4591,6 +4604,12 @@ export class InteractiveMode {
 			}
 
 			case "tool_execution_end": {
+				const viewerEntry = (event.result?.details ?? {}) as
+					| { markdownViewer?: { title: string; content: string; path?: string } }
+					| undefined;
+				if (viewerEntry?.markdownViewer) {
+					this.showMarkdownViewer(viewerEntry.markdownViewer);
+				}
 				const component = this.pendingTools.get(event.toolCallId);
 				const toolArgs = component?.getArgs();
 				const toolName = component?.getToolName() ?? event.toolName;
@@ -6272,6 +6291,68 @@ export class InteractiveMode {
 		this.editorContainer.addChild(component);
 		this.ui.setFocus(focus);
 		this.ui.requestRender();
+	}
+
+	/**
+	 * Show a markdown document as a full-screen overlay viewer.
+	 * Used both by the agent-initiated `show_markdown` tool and the `/view` command.
+	 */
+	private showMarkdownViewer(entry: { title: string; content: string; path?: string }): void {
+		if (this.ui.hasOverlay()) {
+			this.showWarning("Another dialog is already open.");
+			return;
+		}
+
+		const closeHint = keyText("tui.select.cancel");
+		const upHint = keyDisplayText("tui.select.up");
+		const downHint = keyDisplayText("tui.select.down");
+		const pageUpHint = keyDisplayText("tui.select.pageUp");
+		const pageDownHint = keyDisplayText("tui.select.pageDown");
+		const footerHint = `q / ${closeHint} close  ·  ${upHint}/${downHint}/${pageUpHint}/${pageDownHint} scroll`;
+
+		const viewer = new TuiLayouts.MarkdownViewer({
+			getHeight: () => this.ui.terminal.rows,
+			title: entry.title,
+			text: entry.content,
+			markdownTheme: this.getMarkdownThemeWithSettings(),
+			style: {
+				border: (text: string) => theme.fg("border", text),
+				title: (text: string) => theme.bold(theme.fg("accent", text)),
+				footer: (text: string) => theme.fg("dim", text),
+				contentEdge: (text: string) => theme.fg("border", text),
+			},
+			footerHint,
+			onClose: () => {
+				this.ui.hideOverlay();
+				this.ui.setFocus(this.editor);
+				this.ui.requestRender();
+			},
+			requestRender: () => {
+				this.ui.requestRender();
+			},
+		});
+		this.ui.showOverlay(viewer, { width: "100%", maxHeight: "100%", margin: 1 });
+		this.ui.requestRender();
+	}
+
+	/**
+	 * Load a markdown file and open it in the full-screen viewer (used by `/view`).
+	 */
+	private async handleViewCommand(filePath: string): Promise<void> {
+		try {
+			const absolutePath = await resolveReadPathAsync(filePath, this.sessionManager.getCwd());
+			const stat = await fs.promises.stat(absolutePath);
+			if (stat.size > SHOW_MARKDOWN_MAX_BYTES) {
+				this.showError(
+					`File is ${stat.size} bytes, exceeds the ${SHOW_MARKDOWN_MAX_BYTES / 1024}KB markdown viewer limit.`,
+				);
+				return;
+			}
+			const content = await fs.promises.readFile(absolutePath, "utf-8");
+			this.showMarkdownViewer({ title: path.basename(absolutePath), content, path: absolutePath });
+		} catch (error) {
+			this.showError(error instanceof Error ? error.message : String(error));
+		}
 	}
 
 	private showSettingsSelector(): void {

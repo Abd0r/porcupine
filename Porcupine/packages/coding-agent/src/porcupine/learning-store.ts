@@ -340,6 +340,29 @@ function safeProposalId(value: string): boolean {
 	return /^[a-z0-9][a-z0-9-]{2,80}$/.test(value) && !value.includes("..");
 }
 
+const LEARNINGS_FILE = "Learnings.md";
+
+/**
+ * Append a dated learning entry to a Learnings.md kept next to a skill's
+ * SKILL.md (the durable, human-readable companion to the JSON proposal record).
+ * Matches the existing loop's append-only feed pattern; preserves the file if
+ * it already has content. Returns the file that was touched, or undefined when
+ * the entry is already present.
+ */
+export function appendSkillLearningEntry(
+	agentDir: string,
+	options: { id: string; stack: string; kind?: LearningProposalKind; summary: string },
+): string | undefined {
+	const dir = join(agentDir, "skills", options.stack, options.id);
+	const path = join(dir, LEARNINGS_FILE);
+	const line = `- ${new Date().toISOString().slice(0, 10)}: [${options.kind ?? "skill"}/${options.stack}] ${options.summary}`;
+	const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+	if (existing.includes(line)) return undefined;
+	const header = existing.trim() ? `${existing.trimEnd()}\n\n` : "# Learnings\n\n";
+	atomicWrite(path, `${header}${line}\n`);
+	return path;
+}
+
 function buildSkillDraft(id: string, toolName: string, evidence: string[], stack: string): string {
 	const evidenceLines = evidence.map((item) => `- ${item}`).join("\n");
 	return `---
@@ -682,6 +705,13 @@ export function applyLearningProposal(agentDir: string, id: string): LearningMut
 	if (existsSync(target)) throw new Error(`Refusing to overwrite existing skill: ${target}`);
 	const nextContent = proposal.draftContent!;
 	atomicWrite(target, nextContent);
+	// Portable companion record: a dated Learnings.md entry in the skill dir.
+	appendSkillLearningEntry(agentDir, {
+		id: proposal.id,
+		stack,
+		kind: proposal.kind,
+		summary: proposal.summary,
+	});
 	if (proposal.snapshotRef) markSnapshotContent(agentDir, proposal.snapshotRef, nextContent);
 	proposal.status = "activated";
 	proposal.updatedAt = new Date().toISOString();

@@ -100,6 +100,13 @@ export {
 	type SessionSearchToolOptions,
 } from "./session-search.ts";
 export {
+	createShowMarkdownTool,
+	createShowMarkdownToolDefinition,
+	SHOW_MARKDOWN_MAX_BYTES,
+	type ShowMarkdownDetails,
+	type ShowMarkdownToolInput,
+} from "./show-markdown.ts";
+export {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
@@ -159,6 +166,7 @@ import {
 	createSessionSearchToolDefinition,
 	type SessionSearchToolOptions,
 } from "./session-search.ts";
+import { createShowMarkdownTool, createShowMarkdownToolDefinition } from "./show-markdown.ts";
 import {
 	createSendToSubagentToolDefinition,
 	createStopSubagentToolDefinition,
@@ -197,7 +205,8 @@ export type ToolName =
 	| "subagent"
 	| "send_to_subagent"
 	| "stop_subagent"
-	| "mcp_resources";
+	| "mcp_resources"
+	| "show_markdown";
 export const allToolNames: Set<ToolName> = new Set([
 	"ask_question",
 	"read",
@@ -220,6 +229,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"send_to_subagent",
 	"stop_subagent",
 	"mcp_resources",
+	"show_markdown",
 ]);
 
 export interface ToolsOptions {
@@ -284,6 +294,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createProjectsToolDefinition(options?.projects);
 		case "literature":
 			return createLiteratureToolDefinition(options?.literature);
+		case "show_markdown":
+			return createShowMarkdownToolDefinition(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -324,6 +336,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createMemoryTool(options?.memory);
 		case "session_search":
 			return createSessionSearchTool({ cwd, ...options?.session_search });
+		case "show_markdown":
+			return createShowMarkdownTool(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -361,6 +375,7 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 		createSessionSearchToolDefinition({ cwd, ...options?.session_search }),
 		createTasksToolDefinition(options?.tasks),
 		createLiteratureToolDefinition(options?.literature),
+		createShowMarkdownToolDefinition(cwd),
 	];
 }
 
@@ -378,6 +393,7 @@ export function createReadOnlyToolDefinitions(cwd: string, options?: ToolsOption
 		createMemoryToolDefinition(options?.memory),
 		createProjectsToolDefinition(options?.projects),
 		createSessionSearchToolDefinition({ cwd, ...options?.session_search }),
+		createShowMarkdownToolDefinition(cwd),
 	];
 }
 
@@ -405,6 +421,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		session_search: createSessionSearchToolDefinition({ cwd, ...options?.session_search }),
 		tasks: createTasksToolDefinition(options?.tasks),
 		literature: createLiteratureToolDefinition(options?.literature),
+		show_markdown: createShowMarkdownToolDefinition(cwd),
 		subagent: options?.subagent
 			? createSubagentToolDefinition(options.subagent)
 			: createUnavailableSubagentToolDefinition(),
@@ -436,6 +453,7 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 		createSessionSearchTool({ cwd, ...options?.session_search }),
 		createTasksTool(options?.tasks),
 		createLiteratureTool(options?.literature),
+		createShowMarkdownTool(cwd),
 	];
 }
 
@@ -453,6 +471,7 @@ export function createReadOnlyTools(cwd: string, options?: ToolsOptions): Tool[]
 		createMemoryTool(options?.memory),
 		createProjectsTool(options?.projects),
 		createSessionSearchTool({ cwd, ...options?.session_search }),
+		createShowMarkdownTool(cwd),
 	];
 }
 
@@ -480,6 +499,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		session_search: createSessionSearchTool({ cwd, ...options?.session_search }),
 		tasks: createTasksTool(options?.tasks),
 		literature: createLiteratureTool(options?.literature),
+		show_markdown: createShowMarkdownTool(cwd),
 		subagent: wrapToolDefinition(
 			options?.subagent ? createSubagentToolDefinition(options.subagent) : createUnavailableSubagentToolDefinition(),
 		),

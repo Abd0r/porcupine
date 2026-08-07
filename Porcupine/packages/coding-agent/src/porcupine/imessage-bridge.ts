@@ -18,6 +18,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@porcupineai/agent-core";
+import { type BridgeCommandContext, handleBridgeCommand, parseBridgeCommand } from "./bridge-commands.ts";
 import { extractAssistantText, lastUserMessageText, summarizeToolCalls, textsMatch } from "./telegram-bridge.ts";
 
 const POLL_INTERVAL_MS = 3000;
@@ -53,6 +54,8 @@ export class IMessageBridge {
 	private pendingConfirms = new Map<string, { chatId: string; resolve: (ok: boolean) => void }>();
 	private pendingSelects = new Map<string, { options: string[]; resolve: (value: string | undefined) => void }>();
 	private pendingTextRequest: { chatId: string; resolve: (value: string | undefined) => void } | undefined;
+	/** Epoch ms when the bridge started polling; drives the !status uptime line. */
+	private startedAt: number | undefined;
 
 	constructor(options: IMessageBridgeOptions) {
 		this.options = options;
@@ -64,6 +67,11 @@ export class IMessageBridge {
 
 	get pendingTurns(): number {
 		return this.pendingMessages.length;
+	}
+
+	/** Seconds the bridge has been polling (used by the !status command). */
+	get uptimeSeconds(): number | undefined {
+		return this.startedAt === undefined ? undefined : (Date.now() - this.startedAt) / 1000;
 	}
 
 	// ---------------------------------------------------------------------
@@ -295,6 +303,26 @@ export class IMessageBridge {
 		}
 	}
 
+	/**
+	 * Resolve a '!' control command and reply to the sender chat through the
+	 * notifyTaskResult send path (the bridge is already restricted to the owner
+	 * allowlist by the caller here). Returns undefined when the text is not a
+	 * command so the message falls through to normal prompt handling.
+	 */
+	private replyToCommand(chatId: string, text: string): string | undefined {
+		const parsed = parseBridgeCommand(text);
+		if (parsed === null) return undefined;
+		const context: BridgeCommandContext = {
+			uptimeSeconds: this.uptimeSeconds,
+			sessionActive: this.running,
+			statusText: this.options.getStatus?.() ?? "",
+		};
+		const reply = handleBridgeCommand(parsed, { context });
+		this.activeChatId = chatId;
+		void this.notifyTaskResult(reply).catch(() => {});
+		return reply;
+	}
+
 	private async handleIncoming(chatId: string, text: string): Promise<void> {
 		// A pending free-text answer consumes this message (bound to its chat).
 		if (this.pendingTextRequest && this.pendingTextRequest.chatId === chatId) {
@@ -332,6 +360,11 @@ export class IMessageBridge {
 					}
 				}
 			}
+		}
+
+		// '!' control commands (owner chats only, allowlist enforced by caller).
+		if (text.startsWith("!")) {
+			if (this.replyToCommand(chatId, text) !== undefined) return;
 		}
 
 		if (text === "/status") {
@@ -372,6 +405,7 @@ export class IMessageBridge {
 			throw new Error("iMessage bridge is macOS-only (Messages.app).");
 		}
 		this.running = true;
+		this.startedAt = Date.now();
 		this.pollChats = await this.resolveAllowlist(this.options.allowlist).catch(() => this.options.allowlist);
 		if (this.pollChats.length === 0) {
 			this.running = false;
