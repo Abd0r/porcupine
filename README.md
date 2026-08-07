@@ -10,8 +10,6 @@
   <a href="https://github.com/Abd0r/porcupineai"><img src="https://img.shields.io/github/stars/Abd0r/porcupineai" alt="GitHub stars" /></a>
 </p>
 
-<p align="center">⭐ <b>If Porcupine helps you get real work done, <a href="https://github.com/Abd0r/porcupineai">star the repo</a></b> — it costs nothing and fuels the project. ⭐</p>
-
 A terminal coding agent. You describe the goal; it reads your repo, runs commands, edits files, and verifies the result — inside a permission mode you control.
 
 Built on top of [Pi](https://github.com/earendil-works/pi) (MIT), as its own product.
@@ -107,6 +105,8 @@ Read [Security](Porcupine/packages/coding-agent/docs/security.md) and [Container
 ## License
 
 [MIT](LICENSE).
+
+_If Porcupine helps you get real work done, a <a href="https://github.com/Abd0r/porcupineai">star</a> means a lot._
 
 ---
 
