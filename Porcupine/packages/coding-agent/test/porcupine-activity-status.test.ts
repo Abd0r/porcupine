@@ -49,14 +49,14 @@ describe("porcupine/animations", () => {
 
 	it("loader options use fixed emoji + cycling dots", () => {
 		const opts = animationLoaderOptions("reading");
-		expect(opts.frames).toEqual(["📖  Reading.", "📖  Reading..", "📖  Reading...", "📖  Reading.."]);
+		expect(opts.frames).toEqual(["📖 Reading.", "📖 Reading..", "📖 Reading...", "📖 Reading.."]);
 		// Hint-only message (label is in the frames)
 		expect(formatAnimationMessage("reading")).toBe("");
 		expect(formatAnimationMessage("reading", { hint: "esc to interrupt" })).toBe("esc to interrupt");
 
 		const voidOpts = animationLoaderOptions("staring-into-void");
-		expect(voidOpts.frames[0]).toBe("🌌  Staring into the void.");
-		expect(voidOpts.frames[2]).toBe("🌌  Staring into the void...");
+		expect(voidOpts.frames[0]).toBe("🌌 Staring into the void.");
+		expect(voidOpts.frames[2]).toBe("🌌 Staring into the void...");
 		// Same emoji on every frame — motion is dots only
 		expect(voidOpts.frames.every((f) => f.startsWith("🌌"))).toBe(true);
 	});

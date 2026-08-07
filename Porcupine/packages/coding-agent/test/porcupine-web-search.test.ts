@@ -35,9 +35,9 @@ describe("free web tools", () => {
 		expect(resolveWebSearchOrder()).toEqual(["duckduckgo", "wikipedia"]);
 	});
 
-	it("maps web tools to browsing activity", () => {
-		expect(resolveActivityFromToolName("web_search")).toBe("browsing");
-		expect(resolveActivityFromToolName("web_extract")).toBe("browsing");
+	it("maps web tools to web-search activity", () => {
+		expect(resolveActivityFromToolName("web_search")).toBe("web-search");
+		expect(resolveActivityFromToolName("web_extract")).toBe("web-extract");
 	});
 
 	it("live cascade returns real hits (SearXNG if up, else free public backends)", async () => {

@@ -67,7 +67,7 @@ describe("skillNameFromPath", () => {
 describe("named animation labels", () => {
 	it("appends the name to the chip label", () => {
 		const options = animationLoaderOptions("reading-skill", "git-basics");
-		expect(options.frames[0]).toContain("📖  Reading skill: git-basics");
+		expect(options.frames[0]).toContain("📖 Reading skill: git-basics");
 	});
 
 	it("normalizes the new ids", () => {
