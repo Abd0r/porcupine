@@ -59,6 +59,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `enableInstallTelemetry` | boolean | `true` | Send an anonymous install/update version ping after first install or changelog-detected updates. This does not control update checks |
 | `updateCheck` | boolean | `true` | Check npm/GitHub for a newer release on startup and show `🆕 update available` beside the version |
 | `updateCheckIntervalHours` | number | `24` | How long to cache the update check before re-fetching |
+| `notifyOnTaskCompletion` | boolean | `true` | Send a one-line summary to connected chat bridges when a task/cron run completes or fails |
 | `enableAnalytics` | boolean | `false` | Opt-in analytics data sharing. Currently only asked for during the experimental first-time setup (`PORCUPINE_EXPERIMENTAL=1`) |
 | `trackingId` | string | - | Analytics tracking identifier, generated when `enableAnalytics` is turned on |
 | `doubleEscapeAction` | string | `"tree"` | Action for double-escape: `"tree"`, `"fork"`, or `"none"` |

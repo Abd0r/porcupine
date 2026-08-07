@@ -57,7 +57,17 @@ control (**Ask** confirms everything, **Normal** asks on flagged commands,
 - **Voice** — `/voice on`, push-to-talk with Space. Audio-capable models get
   native audio; text-only models use on-device Moonshine STT + Kokoro TTS.
 - **Tasks & Cron** — durable task templates with attended schedules
-  (`/task`, `/cron`; fires while the session is open and idle).
+  (`/task`, `/cron`; fires while the session is open and idle), task chaining
+  (`next`/`nextOnFail`), and event triggers (`file` content-change, `script`
+  exit-code) — plus completion notifications to your chat bridges.
+- **Markdown viewer** — the agent presents plans/reports in a full-screen
+  rendered viewer (`show_markdown` tool), and `/view <path>` opens any file.
+- **Observability** — `/usage` (per-turn tokens) and `/cost` (estimated cost)
+  right in the session.
+- **`/memory` + `/init`** — see what the agent learned about you, and generate
+  a project AGENTS.md that never clobbers your edits.
+- **`porcupine serve`** — headless HTTP API (sessions, async prompts, SSE
+  events, programmatic approval) for IDE plugins, web/mobile clients, scripts.
 - **Projects** — `Project/<name>/` workspaces with `README.md` + `STATUS.md`.
 - **Telegram bridge** — message the same session from your phone
   (`PORCUPINE_TELEGRAM_TOKEN` in `~/.porcupine/agent/.env`); confirmations and
@@ -65,7 +75,8 @@ control (**Ask** confirms everything, **Normal** asks on flagged commands,
 - **Discord + iMessage bridges** — the same session contract over Discord
   channels (`PORCUPINE_DISCORD_TOKEN`/`_ALLOW`) and the macOS Messages app
   (`PORCUPINE_IMESSAGE_ALLOW`). Zero-dependency Discord gateway, AppleScript
-  iMessage polling; all three race the TUI for confirmations.
+  iMessage polling; all three race the TUI for confirmations. Owner `!`
+  commands (`!status`, `!tasks`, `!run`, `!help`) control the session remotely.
 - **`/sandbox`** — one command to route built-in tools into a Gondolin
   micro-VM (`/sandbox on` installs, registers, and hot-reloads the extension;
   `/sandbox status` checks Node/QEMU/VM state).

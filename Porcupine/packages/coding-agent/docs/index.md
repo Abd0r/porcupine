@@ -44,6 +44,7 @@ For the full first-run flow, see [Quickstart](quickstart.md).
 - [llama.cpp](llama-cpp.md) - run a local router and manage models with `/llama`.
 - [Security](security.md) - project trust, sandbox boundaries, and vulnerability reporting.
 - [Containerization](containerization.md) - sandbox porcupine with Gondolin, Docker, or OpenShell.
+- [Server](server.md) - headless HTTP API: `porcupine serve`, sessions, async prompts, SSE events, programmatic approval.
 - [Settings](settings.md) - global and project settings.
 - [Keybindings](keybindings.md) - default shortcuts and custom keybindings.
 - [Sessions](sessions.md) - session management, branching, and tree navigation.

@@ -17,10 +17,19 @@ route is unclear. Prefer `web_search` before `web_extract` for internet lookups.
 
 - The product ships: `/sandbox` (Gondolin micro-VM isolation for built-in
   tools), remote bridges for Telegram / Discord / iMessage (shared-session
-  messaging, allowlist-gated, attended-only), `--headless` CI task mode, the
-  stacks capability tree, and sub-agents with the whole tool stack minus
-  agent-level tools (120-step budget). Full behavior details live in PROMPT.md
-  and `docs/` (usage, subagents, stacks, security, containerization).
+  messaging, allowlist-gated, attended-only, plus owner `!status` / `!tasks` /
+  `!run <taskId>` / `!help` control commands), `--headless` CI task mode,
+  `porcupine serve` (headless HTTP API: sessions, async prompts, SSE events,
+  programmatic approval), the stacks capability tree, and sub-agents with the
+  whole tool stack minus agent-level tools (step budget per `subagent.maxSteps`
+  setting, default 120). Full behavior details live in PROMPT.md and `docs/`
+  (usage, server, subagents, stacks, security, containerization).
+- Session UI: full-screen markdown viewer (agent presents plans/reports via the
+  `show_markdown` tool; `/view <path>` opens a file), `/usage` + `/cost`
+  observability, `/memory` + `/init` (project AGENTS.md generator), and task
+  chaining (`next`/`nextOnFail`) + event triggers (`file` content-change,
+  `script` exit-code) with completion notifications to chat bridges
+  (`notifyOnTaskCompletion`, default on).
 - Session state lives under `~/.porcupine/agent/` (settings, sessions,
   memory, learning). Repo root: `~/Porcupine/Porcupine` (monorepo;
   `packages/coding-agent` is the product package).

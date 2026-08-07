@@ -45,6 +45,11 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/new`                       | Start a new session                                                        |
 | `/name <name>`               | Set session display name                                                   |
 | `/session`                   | Show session file, ID, messages, tokens, and cost                          |
+| `/usage`                     | Per-turn token usage and totals for this session                           |
+| `/cost`                      | Estimated token cost for this session                                     |
+| `/view <path>`               | Open a markdown file in the full-screen viewer                            |
+| `/memory`                    | Show what Porcupine has stored about you and the environment              |
+| `/init [--force]`            | Generate/merge a compact AGENTS.md project context file                   |
 | `/tree`                      | Jump to any point in the session and continue from there                   |
 | `/trust`                     | Save project trust decision for future sessions                            |
 | `/fork`                      | Create a new session from a previous user message                          |
@@ -233,12 +238,27 @@ not use it for unattended privileged actions. Closed-terminal execution requires
 a separate daemon and isolated session runner; Porcupine intentionally does not
 pretend that one exists.
 
+**Task chaining** links tasks: a task can declare `next` (run when this one
+completes) and `nextOnFail` (run when it fails). Chains drain through the same
+idle gate, and cycles (A to B to A) are rejected at creation.
+
+**Event triggers** run a task when a condition changes instead of on a clock:
+a `file` trigger fires when a watched file's content changes (SHA-256, optional
+regex filter), and a `script` trigger fires when a check command exits with a
+configured code (default 0). Triggers are evaluated cheaply at each idle drain
+and record last-seen state, shown by the `status` action. The `tasks` tool
+exposes `next`/`nextOnFail`/`trigger` fields and `patch`, `chain`, and `status`
+actions for managing them.
+
 The agent can also manage Tasks and Cron directly through the `tasks` tool
 (actions: list, create, show, run, pause, resume, cancel, schedule_list,
 schedule_add, schedule_pause, schedule_resume, schedule_remove). `run` queues a
 claimed run for the next idle moment — the same attended, locked, append-only
 paths as `/task run` and the cron tick — so an agent-scheduled task starts right
-after the current turn instead of waiting for the next 15-second tick.
+after the current turn instead of waiting for the next 15-second tick. When a
+run finishes (completed or failed), its one-line summary is fanned out to any
+connected chat bridge, so you learn a scheduled task finished without sitting in
+the TUI. Toggle with the `notifyOnTaskCompletion` setting (default on).
 
 ### Project Workspaces
 
@@ -265,6 +285,18 @@ TUI shows. All three bridges share one contract: messages run on the shared
 session (they appear in the TUI), and the agent's response comes back to the
 channel that asked. They are attended-only: they run inside the interactive
 session and stop when the session closes.
+
+Owner messages that start with `!` are control commands instead of session
+prompts (JARVIS-style remote control):
+
+```text
+!status            session mode, id, uptime, latest task run
+!tasks             list durable tasks with status
+!run <taskId>      queue a task for the next idle drain
+!help              list the available commands
+```
+
+Only the owner chat may issue them; unknown commands get a safe usage hint.
 
 #### Telegram (`PORCUPINE_TELEGRAM_TOKEN`)
 
@@ -394,6 +426,19 @@ calls collapse into one step, capped at 12 for a compact view; the same
 `TaskGraphComponent` appears in the chat). The tracker disappears entirely
 when there is no graph with steps, and on narrow terminals it is dropped
 before the model badge is truncated.
+
+## Headless Server (porcupine serve)
+
+`porcupine serve` runs the agent as a headless HTTP service, the OpenCode-style
+server surface for driving sessions programmatically (IDE plugins, web/mobile
+clients, scripts):
+
+```bash
+porcupine serve --port 4096 --token <secret>
+```
+
+Defaults to loopback. Binding a non-loopback host requires a token (`--token`
+or `PORCUPINE_SERVER_TOKEN`). See [server.md](server.md) for the full API.
 
 ## Message Queue
 
