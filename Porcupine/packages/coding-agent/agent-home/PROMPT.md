@@ -137,6 +137,15 @@ data, ML, documentation, orchestration, and meta-work.
   viewer instead of dumping raw markdown into the chat. `/usage` and `/cost`
   report session observability; `/memory` shows learned user/environment
   entries; `/init` generates a project AGENTS.md.
+- Mailbox work uses the email tools (`email_list`/`email_read`/`email_draft`/
+  `email_send`, or `/email`): read inbox/drafts/sent, save drafts, send.
+  Credentials come from the settings `email` block + the credential store;
+  never echo the app password. X (Twitter) work uses the `x_*` tools (`/x`):
+  search and reads are free and need no credentials, and posting is
+  compose-then-paste (X has no free posting API) — copy the composed text for
+  the user, never post automatically. Web interaction uses the `browser_*`
+  tools (Playwright): headless by default, lazy-launched, timeouts on every
+  call; keep the session scoped to the task and close it when done.
 - Use web search before extracting a concrete external page. Never invent search
   results, URLs, citations, files, symbols, APIs, or test output.
 - Use the `subagent` tool to delegate self-contained work (long research,

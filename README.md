@@ -71,15 +71,28 @@ Reasoning depth is separate from permission: `/reasoning` and `/adaptive` tune t
   other and you live; `send_to_subagent` steers any running worker.
 - **MCP client** — connect MCP servers (stdio + Streamable HTTP); tools, resources (`mcp_resources`) and prompts (`/mcpp:`) become first-class. Fail-closed security gate, browser OAuth, OS-keyring tokens.
 - **Autonomous learning** — the agent improves its own skills and memory from real use: evidence-graded proposals, snapshots + auto-rollback, a live feed (`/learning feed`), and a refiner for weak skills.
-- **48 skills across 17 stacks** — from `problem-solving` to `secure-coding`, `root-cause-analysis`, and `autonomous-delegation`.
+- **49 skills across 17 stacks** — from `problem-solving` to `secure-coding`, `root-cause-analysis`, and `autonomous-delegation`; a `deep-research` skill orchestrates parallel sub-agent research with evidence grading.
 - **Dynamic task graph** — the footer tracker animates on every multi-step turn.
 - **Voice** — `/voice on`, push-to-talk with Space.
-- **Tasks & Cron** — durable task templates with attended schedules (`/task`, `/cron`).
+- **Tasks & Cron** — durable task templates with attended schedules (`/task`, `/cron`), task chaining (`next`/`nextOnFail`), event triggers (`file` content-change, `script` exit-code), and completion notifications to your chat bridges (`notifyOnTaskCompletion`).
 - **Projects** — `Project/<name>/` workspaces with README + STATUS.
+- **Markdown viewer** — the agent presents plans/reports in a full-screen rendered viewer (`show_markdown` tool); `/view <path>` opens any file.
+- **Observability** — `/usage` (per-turn tokens) and `/cost` (estimated cost) in the session.
+- **Memory** — `/memory` shows what the agent learned about you; `/init` generates a project `AGENTS.md` that never clobbers your edits.
 - **Remote bridges** — drive the same session from your phone or chat:
   Telegram (`PORCUPINE_TELEGRAM_TOKEN`), Discord (`PORCUPINE_DISCORD_TOKEN`), or
   iMessage (macOS, `PORCUPINE_IMESSAGE_ALLOW`). Confirmations race the TUI with
-  buttons/reactions — first response wins.
+  buttons/reactions — first response wins. Owner `!` commands (`!status`,
+  `!tasks`, `!run <taskId>`, `!help`) control the session remotely.
+- **Email** — read inbox/drafts/sent, save drafts, and send over IMAP/SMTP
+  (app password; `/email` + `email_*` tools).
+- **X (Twitter), free** — search (web cascade), read tweets (public
+  syndication, no key), local drafts, compose-then-paste posting (X has no
+  free API tier anymore; `/x` + `x_*` tools).
+- **Native browser** — Playwright-powered `browser_*` tools: navigate, click,
+  type, extract, screenshot, evaluate (headless by default).
+- **`porcupine serve`** — headless HTTP API (sessions, async prompts, SSE
+  events, programmatic approval) for IDE plugins, web/mobile clients, scripts.
 - **`/sandbox`** — one command routes built-in tools into a Gondolin micro-VM
   (`on` installs + hot-reloads; `status` checks Node/QEMU/VM state).
 - **`--headless`** — CI-friendly task mode: run a prompt to completion, print
@@ -101,7 +114,8 @@ Read [Security](Porcupine/packages/coding-agent/docs/security.md) and [Container
 - [Quickstart](Porcupine/packages/coding-agent/docs/quickstart.md) · [Usage](Porcupine/packages/coding-agent/docs/usage.md) · [Settings](Porcupine/packages/coding-agent/docs/settings.md)
 - [Stacks](Porcupine/packages/coding-agent/docs/stacks.md) · [Sub-agents](Porcupine/packages/coding-agent/docs/subagents.md)
 - [MCP](Porcupine/packages/coding-agent/docs/mcp.md) · [Skills](Porcupine/packages/coding-agent/docs/skills.md) · [Extensions](Porcupine/packages/coding-agent/docs/extensions.md)
-- [Sessions](Porcupine/packages/coding-agent/docs/sessions.md)
+- [Sessions](Porcupine/packages/coding-agent/docs/sessions.md) · [Server API](Porcupine/packages/coding-agent/docs/server.md)
+- [Email](Porcupine/packages/coding-agent/docs/email.md) · [X (Twitter)](Porcupine/packages/coding-agent/docs/x.md) · [Browser use](Porcupine/packages/coding-agent/docs/browser.md)
 
 ## License
 

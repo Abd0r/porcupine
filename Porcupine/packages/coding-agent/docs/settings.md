@@ -60,6 +60,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `updateCheck` | boolean | `true` | Check npm/GitHub for a newer release on startup and show `🆕 update available` beside the version |
 | `updateCheckIntervalHours` | number | `24` | How long to cache the update check before re-fetching |
 | `notifyOnTaskCompletion` | boolean | `true` | Send a one-line summary to connected chat bridges when a task/cron run completes or fails |
+| `email` | object | - | IMAP/SMTP mailbox config: `{ host, port, secure, user, draftsFolder, sentFolder, timeoutMs }`. The app password lives in the credential store, never in settings |
 | `enableAnalytics` | boolean | `false` | Opt-in analytics data sharing. Currently only asked for during the experimental first-time setup (`PORCUPINE_EXPERIMENTAL=1`) |
 | `trackingId` | string | - | Analytics tracking identifier, generated when `enableAnalytics` is turned on |
 | `doubleEscapeAction` | string | `"tree"` | Action for double-escape: `"tree"`, `"fork"`, or `"none"` |

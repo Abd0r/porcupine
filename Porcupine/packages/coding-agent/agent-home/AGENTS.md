@@ -24,6 +24,14 @@ route is unclear. Prefer `web_search` before `web_extract` for internet lookups.
   whole tool stack minus agent-level tools (step budget per `subagent.maxSteps`
   setting, default 120). Full behavior details live in PROMPT.md and `docs/`
   (usage, server, subagents, stacks, security, containerization).
+- Integrations: email over IMAP/SMTP (`/email` + `email_list`/`email_read`/
+  `email_draft`/`email_send`; app password in the credential store, config in
+  the settings `email` block, `docs/email.md`), free X (Twitter) (`/x` +
+  `x_search`/`x_read`/`x_draft`/`x_post`/`x_reply`; search/read/drafts need no
+  credentials, posting is compose-then-paste, `docs/x.md`), and native browser
+  use via Playwright (`browser_navigate`/`click`/`type`/`extract`/
+  `screenshot`/`evaluate`; headless Chromium, one-time `npx playwright install
+  chromium`, `docs/browser.md`).
 - Session UI: full-screen markdown viewer (agent presents plans/reports via the
   `show_markdown` tool; `/view <path>` opens a file), `/usage` + `/cost`
   observability, `/memory` + `/init` (project AGENTS.md generator), and task
