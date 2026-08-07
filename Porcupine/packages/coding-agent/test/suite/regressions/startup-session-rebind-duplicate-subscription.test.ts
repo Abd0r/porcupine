@@ -51,6 +51,7 @@ describe("overlapping startup and replacement session rebinds", () => {
 			updateEditorBorderColor: () => {},
 			updateTerminalTitle,
 			wireModeConfirmations: () => {},
+			subscribeToSubagents: () => {},
 		};
 
 		const startupRebind = interactiveModePrototype.rebindCurrentSession.call(context);

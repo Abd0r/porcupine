@@ -300,6 +300,7 @@ describe("regression #5943: session_start transient UI", () => {
 					});
 				},
 				subscribeToAgent: () => events.push("subscribe"),
+				subscribeToSubagents: () => {},
 				updateAvailableProviderCount: async () => {},
 				updateEditorBorderColor: () => {},
 				updateTerminalTitle: () => {},
@@ -354,6 +355,7 @@ describe("regression #5943: session_start transient UI", () => {
 				updateEditorBorderColor: () => {},
 				updateTerminalTitle: () => {},
 				wireModeConfirmations: () => events.push("confirm"),
+				subscribeToSubagents: () => {},
 			};
 
 			await interactiveModePrototype.rebindCurrentSession.call(context, { renderBeforeBind: true });
@@ -408,6 +410,7 @@ describe("regression #5943: session_start transient UI", () => {
 				updateEditorBorderColor: () => {},
 				updateTerminalTitle: () => {},
 				wireModeConfirmations: () => events.push("confirm"),
+				subscribeToSubagents: () => {},
 			};
 
 			await interactiveModePrototype.rebindCurrentSession.call(context, { renderBeforeBind: true });

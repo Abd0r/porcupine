@@ -93,6 +93,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		applyTaskGraphDisplay: vi.fn(),
 		updateEditorBorderColor: vi.fn(),
 		setPorcupineActivity: vi.fn(),
+		isMessagingToolName: () => false,
 		getRegisteredToolDefinition: (_toolName: string) => undefined,
 		renderSessionItems: (InteractiveMode.prototype as unknown as { renderSessionItems: RenderSessionItems })
 			.renderSessionItems,
