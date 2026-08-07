@@ -289,7 +289,7 @@ channel that asked. They are attended-only: they run inside the interactive
 session and stop when the session closes.
 
 Owner messages that start with `!` are control commands instead of session
-prompts (JARVIS-style remote control):
+prompts (remote control from your phone):
 
 ```text
 !status            session mode, id, uptime, latest task run
