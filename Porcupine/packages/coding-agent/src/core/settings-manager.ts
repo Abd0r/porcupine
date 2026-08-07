@@ -115,6 +115,7 @@ export interface Settings {
 	lastChangelogVersion?: string;
 	defaultProvider?: string;
 	defaultModel?: string;
+	defaultInteractionMode?: "ask" | "normal" | "auto"; // default: "normal" — interaction mode new sessions start in
 	defaultThinkingLevel?: ThinkingLevel;
 	transport?: TransportSetting; // default: "auto"
 	steeringMode?: "all" | "one-at-a-time";
@@ -714,6 +715,10 @@ export class SettingsManager {
 
 	getDefaultModel(): string | undefined {
 		return this.settings.defaultModel;
+	}
+
+	getDefaultInteractionMode(): "ask" | "normal" | "auto" {
+		return this.settings.defaultInteractionMode ?? "normal";
 	}
 
 	setDefaultProvider(provider: string): void {

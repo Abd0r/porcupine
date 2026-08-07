@@ -358,7 +358,7 @@ export class AgentSession {
 
 	// Reasoning & interaction mode state (session-scoped, not yet persisted to JSONL).
 	// /refresh snapshots and restores these so the session feels continuous after a full runtime rebuild.
-	private _interactionMode: "ask" | "normal" | "auto" = "normal";
+	private _interactionMode: "ask" | "normal" | "auto";
 
 	// Sub-agent runtime state (concurrent up to subagent.maxConcurrent).
 	private _activeSubagentRuns = 0;
@@ -655,6 +655,7 @@ export class AgentSession {
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
 		this.settingsManager = config.settingsManager;
+		this._interactionMode = this.settingsManager.getDefaultInteractionMode();
 		this._scopedModels = config.scopedModels ?? [];
 		this._resourceLoader = config.resourceLoader;
 		this._customTools = config.customTools ?? [];
