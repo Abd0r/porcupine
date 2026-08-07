@@ -13,3 +13,4 @@ export type {
 	RpcResponse,
 	RpcSessionState,
 } from "./rpc/rpc-types.ts";
+export { runServeMode, type ServeModeOptions } from "./serve-mode.ts";

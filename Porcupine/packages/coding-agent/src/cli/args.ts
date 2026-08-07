@@ -37,6 +37,10 @@ export interface Args {
 	noExtensions?: boolean;
 	print?: boolean;
 	headless?: boolean;
+	serve?: boolean;
+	port?: number;
+	host?: string;
+	token?: string;
 	export?: string;
 	noSkills?: boolean;
 	skills?: string[];
@@ -156,6 +160,20 @@ export function parseArgs(args: string[]): Args {
 				result.messages.push(next);
 				i++;
 			}
+		} else if (arg === "--serve") {
+			// Serve mode: run the agent as a headless HTTP server (see docs/server.md).
+			result.serve = true;
+		} else if (arg === "--port" && i + 1 < args.length) {
+			const port = Number(args[++i]);
+			if (!Number.isInteger(port) || port < 0 || port > 65535) {
+				result.diagnostics.push({ type: "error", message: `Invalid port "${args[i]}". Expected 0-65535.` });
+			} else {
+				result.port = port;
+			}
+		} else if (arg === "--host" && i + 1 < args.length) {
+			result.host = args[++i];
+		} else if (arg === "--token" && i + 1 < args.length) {
+			result.token = args[++i];
 		} else if (arg === "--export" && i + 1 < args.length) {
 			result.export = args[++i];
 		} else if ((arg === "--extension" || arg === "-e") && i + 1 < args.length) {
