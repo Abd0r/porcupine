@@ -49,6 +49,9 @@ For the full first-run flow, see [Quickstart](quickstart.md).
 - [Keybindings](keybindings.md) - default shortcuts and custom keybindings.
 - [Sessions](sessions.md) - session management, branching, and tree navigation.
 - [Compaction](compaction.md) - context compaction and branch summarization.
+- [X (Twitter)](x.md) - free X integration: search, read tweets, drafts, and compose-then-paste posting.
+- [Email (IMAP/SMTP)](email.md) - read inbox/drafts/sent, save drafts, send via app password.
+- [Browser use](browser.md) - native Chromium control via Playwright: navigate, click, type, extract, screenshot.
 
 ## Customization
 

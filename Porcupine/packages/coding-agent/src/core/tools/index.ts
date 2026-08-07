@@ -16,6 +16,20 @@ export {
 	createLocalBashOperations,
 } from "./bash.ts";
 export {
+	createBrowserClickTool,
+	createBrowserClickToolDefinition,
+	createBrowserEvaluateTool,
+	createBrowserEvaluateToolDefinition,
+	createBrowserExtractTool,
+	createBrowserExtractToolDefinition,
+	createBrowserNavigateTool,
+	createBrowserNavigateToolDefinition,
+	createBrowserScreenshotTool,
+	createBrowserScreenshotToolDefinition,
+	createBrowserTypeTool,
+	createBrowserTypeToolDefinition,
+} from "./browser.ts";
+export {
 	type CapabilityCatalogTool,
 	type CapabilitySearchToolDetails,
 	type CapabilitySearchToolInput,
@@ -38,6 +52,25 @@ export {
 	type EditToolInput,
 	type EditToolOptions,
 } from "./edit.ts";
+export {
+	createEmailDraftTool,
+	createEmailDraftToolDefinition,
+	createEmailListTool,
+	createEmailListToolDefinition,
+	createEmailReadTool,
+	createEmailReadToolDefinition,
+	createEmailSendTool,
+	createEmailSendToolDefinition,
+	type EmailDraftDetails,
+	type EmailDraftToolInput,
+	type EmailListDetails,
+	type EmailListToolInput,
+	type EmailReadDetails,
+	type EmailReadToolInput,
+	type EmailSendDetails,
+	type EmailSendToolInput,
+	type EmailToolOptions,
+} from "./email.ts";
 export { withFileMutationQueue } from "./file-mutation-queue.ts";
 export {
 	createFindTool,
@@ -141,11 +174,43 @@ export {
 	type WriteToolInput,
 	type WriteToolOptions,
 } from "./write.ts";
+export {
+	createXDraftTool,
+	createXDraftToolDefinition,
+	createXPostTool,
+	createXPostToolDefinition,
+	createXReadTool,
+	createXReadToolDefinition,
+	createXReplyTool,
+	createXReplyToolDefinition,
+	createXSearchTool,
+	createXSearchToolDefinition,
+	type XDraftToolInput,
+	type XPostToolInput,
+	type XReadToolInput,
+	type XReplyToolInput,
+	type XSearchToolInput,
+	type XToolsOptions,
+} from "./x.ts";
 
 import type { AgentTool } from "@porcupineai/agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { createAskQuestionTool, createAskQuestionToolDefinition } from "./ask-question.ts";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
+import {
+	createBrowserClickTool,
+	createBrowserClickToolDefinition,
+	createBrowserEvaluateTool,
+	createBrowserEvaluateToolDefinition,
+	createBrowserExtractTool,
+	createBrowserExtractToolDefinition,
+	createBrowserNavigateTool,
+	createBrowserNavigateToolDefinition,
+	createBrowserScreenshotTool,
+	createBrowserScreenshotToolDefinition,
+	createBrowserTypeTool,
+	createBrowserTypeToolDefinition,
+} from "./browser.ts";
 import {
 	type CapabilitySearchToolOptions,
 	createCapabilitySearchTool,
@@ -153,6 +218,17 @@ import {
 } from "./capability-search.ts";
 import { type ComputerUseToolOptions, createComputerUseTool, createComputerUseToolDefinition } from "./computer-use.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
+import {
+	createEmailDraftTool,
+	createEmailDraftToolDefinition,
+	createEmailListTool,
+	createEmailListToolDefinition,
+	createEmailReadTool,
+	createEmailReadToolDefinition,
+	createEmailSendTool,
+	createEmailSendToolDefinition,
+	type EmailToolOptions,
+} from "./email.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLiteratureTool, createLiteratureToolDefinition, type LiteratureToolOptions } from "./literature.ts";
@@ -181,6 +257,19 @@ import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { createWebExtractTool, createWebExtractToolDefinition } from "./web-extract.ts";
 import { createWebSearchTool, createWebSearchToolDefinition } from "./web-search.ts";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.ts";
+import {
+	createXDraftTool,
+	createXDraftToolDefinition,
+	createXPostTool,
+	createXPostToolDefinition,
+	createXReadTool,
+	createXReadToolDefinition,
+	createXReplyTool,
+	createXReplyToolDefinition,
+	createXSearchTool,
+	createXSearchToolDefinition,
+	type XToolsOptions,
+} from "./x.ts";
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
@@ -206,7 +295,22 @@ export type ToolName =
 	| "send_to_subagent"
 	| "stop_subagent"
 	| "mcp_resources"
-	| "show_markdown";
+	| "show_markdown"
+	| "x_search"
+	| "x_read"
+	| "x_draft"
+	| "x_post"
+	| "x_reply"
+	| "email_list"
+	| "email_read"
+	| "email_draft"
+	| "email_send"
+	| "browser_navigate"
+	| "browser_click"
+	| "browser_type"
+	| "browser_extract"
+	| "browser_screenshot"
+	| "browser_evaluate";
 export const allToolNames: Set<ToolName> = new Set([
 	"ask_question",
 	"read",
@@ -230,6 +334,21 @@ export const allToolNames: Set<ToolName> = new Set([
 	"stop_subagent",
 	"mcp_resources",
 	"show_markdown",
+	"x_search",
+	"x_read",
+	"x_draft",
+	"x_post",
+	"x_reply",
+	"email_list",
+	"email_read",
+	"email_draft",
+	"email_send",
+	"browser_navigate",
+	"browser_click",
+	"browser_type",
+	"browser_extract",
+	"browser_screenshot",
+	"browser_evaluate",
 ]);
 
 export interface ToolsOptions {
@@ -251,6 +370,8 @@ export interface ToolsOptions {
 	sendToSubagent?: import("./subagent.ts").SendToSubagentToolOptions;
 	stopSubagent?: import("./subagent.ts").StopSubagentToolOptions;
 	mcpResources?: import("./mcp-resources.ts").McpResourcesToolOptions;
+	x?: XToolsOptions;
+	email?: EmailToolOptions;
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -296,6 +417,24 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLiteratureToolDefinition(options?.literature);
 		case "show_markdown":
 			return createShowMarkdownToolDefinition(cwd);
+		case "x_search":
+			return createXSearchToolDefinition(options?.x);
+		case "x_read":
+			return createXReadToolDefinition(options?.x);
+		case "x_draft":
+			return createXDraftToolDefinition(options?.x);
+		case "x_post":
+			return createXPostToolDefinition(options?.x);
+		case "x_reply":
+			return createXReplyToolDefinition(options?.x);
+		case "email_list":
+			return createEmailListToolDefinition(options?.email);
+		case "email_read":
+			return createEmailReadToolDefinition(options?.email);
+		case "email_draft":
+			return createEmailDraftToolDefinition(options?.email);
+		case "email_send":
+			return createEmailSendToolDefinition(options?.email);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -338,6 +477,36 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createSessionSearchTool({ cwd, ...options?.session_search });
 		case "show_markdown":
 			return createShowMarkdownTool(cwd);
+		case "x_search":
+			return createXSearchTool(options?.x);
+		case "x_read":
+			return createXReadTool(options?.x);
+		case "x_draft":
+			return createXDraftTool(options?.x);
+		case "x_post":
+			return createXPostTool(options?.x);
+		case "x_reply":
+			return createXReplyTool(options?.x);
+		case "email_list":
+			return createEmailListTool(options?.email);
+		case "email_read":
+			return createEmailReadTool(options?.email);
+		case "email_draft":
+			return createEmailDraftTool(options?.email);
+		case "email_send":
+			return createEmailSendTool(options?.email);
+		case "browser_navigate":
+			return createBrowserNavigateTool();
+		case "browser_click":
+			return createBrowserClickTool();
+		case "browser_type":
+			return createBrowserTypeTool();
+		case "browser_extract":
+			return createBrowserExtractTool();
+		case "browser_screenshot":
+			return createBrowserScreenshotTool();
+		case "browser_evaluate":
+			return createBrowserEvaluateTool();
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -376,6 +545,15 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 		createTasksToolDefinition(options?.tasks),
 		createLiteratureToolDefinition(options?.literature),
 		createShowMarkdownToolDefinition(cwd),
+		createXSearchToolDefinition(options?.x),
+		createXReadToolDefinition(options?.x),
+		createXDraftToolDefinition(options?.x),
+		createXPostToolDefinition(options?.x),
+		createXReplyToolDefinition(options?.x),
+		createEmailListToolDefinition(options?.email),
+		createEmailReadToolDefinition(options?.email),
+		createEmailDraftToolDefinition(options?.email),
+		createEmailSendToolDefinition(options?.email),
 	];
 }
 
@@ -434,6 +612,21 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		mcp_resources: options?.mcpResources
 			? createMcpResourcesToolDefinition(options.mcpResources)
 			: createUnavailableMcpResourcesToolDefinition(),
+		x_search: createXSearchToolDefinition(options?.x),
+		x_read: createXReadToolDefinition(options?.x),
+		x_draft: createXDraftToolDefinition(options?.x),
+		x_post: createXPostToolDefinition(options?.x),
+		x_reply: createXReplyToolDefinition(options?.x),
+		email_list: createEmailListToolDefinition(options?.email),
+		email_read: createEmailReadToolDefinition(options?.email),
+		email_draft: createEmailDraftToolDefinition(options?.email),
+		email_send: createEmailSendToolDefinition(options?.email),
+		browser_navigate: createBrowserNavigateToolDefinition(),
+		browser_click: createBrowserClickToolDefinition(),
+		browser_type: createBrowserTypeToolDefinition(),
+		browser_extract: createBrowserExtractToolDefinition(),
+		browser_screenshot: createBrowserScreenshotToolDefinition(),
+		browser_evaluate: createBrowserEvaluateToolDefinition(),
 	};
 }
 
@@ -454,6 +647,15 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 		createTasksTool(options?.tasks),
 		createLiteratureTool(options?.literature),
 		createShowMarkdownTool(cwd),
+		createXSearchTool(options?.x),
+		createXReadTool(options?.x),
+		createXDraftTool(options?.x),
+		createXPostTool(options?.x),
+		createXReplyTool(options?.x),
+		createEmailListTool(options?.email),
+		createEmailReadTool(options?.email),
+		createEmailDraftTool(options?.email),
+		createEmailSendTool(options?.email),
 	];
 }
 
@@ -518,5 +720,20 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 				? createMcpResourcesToolDefinition(options.mcpResources)
 				: createUnavailableMcpResourcesToolDefinition(),
 		),
+		x_search: createXSearchTool(options?.x),
+		x_read: createXReadTool(options?.x),
+		x_draft: createXDraftTool(options?.x),
+		x_post: createXPostTool(options?.x),
+		x_reply: createXReplyTool(options?.x),
+		email_list: createEmailListTool(options?.email),
+		email_read: createEmailReadTool(options?.email),
+		email_draft: createEmailDraftTool(options?.email),
+		email_send: createEmailSendTool(options?.email),
+		browser_navigate: createBrowserNavigateTool(),
+		browser_click: createBrowserClickTool(),
+		browser_type: createBrowserTypeTool(),
+		browser_extract: createBrowserExtractTool(),
+		browser_screenshot: createBrowserScreenshotTool(),
+		browser_evaluate: createBrowserEvaluateTool(),
 	};
 }

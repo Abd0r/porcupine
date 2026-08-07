@@ -11,6 +11,9 @@
 - Added `/memory` (view USER.md/MEMORY.md entries + learning evidence) and `/init [--force]` (generate/merge a compact AGENTS.md project context file; conservative merge never deletes user lines). Learned skills now append dated `Learnings.md` entries.
 - Extended tasks/cron: task chaining (`next` / `nextOnFail` with cycle guard) and event triggers (`file` content-change with SHA-256 + optional regex, `script` exit-code checks), plus `patch`/`chain`/`status` tool actions and `notifyOnTaskCompletion` bridge notifications (default on).
 - Added the `defaultInteractionMode` setting (`ask | normal | auto`) so sessions can start in Auto automatically.
+- Added email integration (IMAP/SMTP, app password): `/email` commands + `email_list`/`email_read`/`email_draft`/`email_send` tools for reading inbox/drafts/sent, saving drafts, and sending. Text-only v1 with timeouts and password-redacting output. See `docs/email.md`.
+- Added free X (Twitter) integration: `x_search` (web cascade scoped to site:x.com), `x_read` (public syndication/oembed JSON, no key), local drafts, and compose-then-paste `x_post`/`x_reply` (X discontinued its free API tier in 2026; posting is agent-composed, you paste). See `docs/x.md`.
+- Added native browser use (Playwright engine): `browser_navigate`/`click`/`type`/`extract`/`screenshot`/`evaluate` tools with a dedicated Chromium session, headless by default (`PORCUPINE_BROWSER_VISIBLE=1` for headed), lazy launch, 15s timeouts. See `docs/browser.md`.
 
 ## [0.1.45] - 2026-08-06
 

@@ -172,5 +172,15 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Schedule a durable local task while this session is open",
 		argumentHint: "add <task-id> :: <cron>|[list|run|pause|resume|remove] <id>",
 	},
+	{
+		name: "email",
+		description: "Ambient-awareness email over IMAP/SMTP (status, drafts, inbox, read, draft, send)",
+		argumentHint: "[status|drafts|inbox|read <id>|draft --to x --subject y --body z|send <draftId>]",
+	},
 	{ name: "quit", description: `Quit ${APP_NAME}` },
+	{
+		name: "x",
+		description: "X (Twitter) free tools: status, search, tweet, draft, drafts, post, reply",
+		argumentHint: "status|search <q>|tweet <id|url>|draft <text>|drafts|post <i>|reply <url> <i>",
+	},
 ];

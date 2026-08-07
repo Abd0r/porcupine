@@ -89,6 +89,25 @@ export interface WarningSettings {
 	anthropicExtraUsage?: boolean; // default: true
 }
 
+export interface EmailSettings {
+	/** IMAP/SMTP host, e.g. imap.gmail.com. Same host is used for both IMAP and SMTP. */
+	host?: string;
+	/** IMAP/SMTP port. Defaults by secure: 993 if secure, 143 otherwise. */
+	port?: number;
+	/** Use TLS for IMAP/SMTP. Defaults true for standard ports. */
+	secure?: boolean;
+	/** Mailbox account (email address) used as the IMAP/SMTP user. */
+	user?: string;
+	/** Auth method. Only "password" (app passwords) is supported in v1. */
+	authMethod?: "password";
+	/** IMAP drafts folder path. Defaults "Drafts". */
+	draftsFolder?: string;
+	/** IMAP sent folder path. Defaults "Sent Mail". */
+	sentFolder?: string;
+	/** Per-operation network timeout in ms. Default 15000. */
+	timeoutMs?: number;
+}
+
 export type DefaultProjectTrust = "ask" | "always" | "never";
 
 export type TransportSetting = Transport;
@@ -157,6 +176,7 @@ export interface Settings {
 	showHardwareCursor?: boolean; // Show terminal cursor while still positioning it for IME
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
+	email?: EmailSettings;
 	sessionDir?: string; // Custom session storage directory (same format as --session-dir CLI flag)
 	httpProxy?: string; // Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Porcupine-managed HTTP clients
 	httpIdleTimeoutMs?: number; // HTTP header/body idle timeout in milliseconds; 0 disables it
@@ -1341,6 +1361,34 @@ export class SettingsManager {
 	setWarnings(warnings: WarningSettings): void {
 		this.globalSettings.warnings = { ...warnings };
 		this.markModified("warnings");
+		this.save();
+	}
+
+	/**
+	 * Resolved email settings with sensible defaults for port/folders/timeout.
+	 * The password is intentionally NOT part of these settings (it lives in the
+	 * keyring, keyed under the account user). Returns undefined when unconfigured.
+	 */
+	getEmailSettings(): EmailSettings | undefined {
+		const raw = this.settings.email;
+		if (!raw || (raw.host === undefined && raw.user === undefined)) return undefined;
+		const secure = raw.secure ?? true;
+		return {
+			...raw,
+			secure,
+			port: raw.port ?? (secure ? 993 : 143),
+			authMethod: raw.authMethod ?? "password",
+			draftsFolder: raw.draftsFolder ?? "Drafts",
+			sentFolder: raw.sentFolder ?? "Sent Mail",
+			timeoutMs: raw.timeoutMs ?? 15000,
+		};
+	}
+
+	/** Merge partial email settings into the existing block. Never stores pass. */
+	setEmailSettings(settings: EmailSettings): void {
+		const merged = { ...(this.globalSettings.email ?? {}), ...settings } as EmailSettings;
+		this.globalSettings.email = merged;
+		this.markModified("email");
 		this.save();
 	}
 }

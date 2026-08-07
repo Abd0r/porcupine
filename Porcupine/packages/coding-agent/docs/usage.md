@@ -76,6 +76,8 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/changelog`                 | Display version history                                                    |
 | `/quit`                      | Quit porcupine                                                             |
 | `/projects [query]`         | List or search `Project/<name>/` workspaces                                |
+| [`/x`](x.md)                | Free X (Twitter) tools: status, search, tweet, draft, drafts, post, reply |
+| [`/email`](email.md)        | Mailbox: status, inbox, drafts, read, draft, send (IMAP/SMTP)           |
 | `/task`                     | Manage durable task templates and run history                              |
 | `/cron`                     | Schedule durable tasks (fires only while the session is open and idle)     |
 | `/guide`                    | Local onboarding: focused topics + exact docs to read                      |

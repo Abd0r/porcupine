@@ -68,6 +68,13 @@ control (**Ask** confirms everything, **Normal** asks on flagged commands,
   a project AGENTS.md that never clobbers your edits.
 - **`porcupine serve`** — headless HTTP API (sessions, async prompts, SSE
   events, programmatic approval) for IDE plugins, web/mobile clients, scripts.
+- **Email** — read inbox/drafts/sent, save drafts, and send via IMAP/SMTP
+  (app password, no paid anything). `/email` commands + agent tools.
+- **X (Twitter), free** — search (web cascade), read tweets (public
+  syndication, no key), local drafts, compose-then-paste posting (X has no
+  free API tier anymore).
+- **Native browser** — Playwright-powered `browser_*` tools: navigate, click,
+  type, extract, screenshot, evaluate (headless by default).
 - **Projects** — `Project/<name>/` workspaces with `README.md` + `STATUS.md`.
 - **Telegram bridge** — message the same session from your phone
   (`PORCUPINE_TELEGRAM_TOKEN` in `~/.porcupine/agent/.env`); confirmations and

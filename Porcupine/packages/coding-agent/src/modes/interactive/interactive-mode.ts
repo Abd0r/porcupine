@@ -163,7 +163,10 @@ function extractTextFromAssistantMessage(message: {
 		.trim();
 }
 
+import { readSecret } from "../../core/keyring.ts";
 import { DiscordBridge } from "../../porcupine/discord-bridge.ts";
+import { createEmailClient, EMAIL_KEYRING_SERVICE } from "../../porcupine/email.ts";
+import { buildEmailCommandOutput, parseEmailCommand } from "../../porcupine/email-command.ts";
 import { IMessageBridge } from "../../porcupine/imessage-bridge.ts";
 import { formatStacksCommandOutput } from "../../porcupine/stacks.ts";
 import {
@@ -3648,6 +3651,12 @@ export class InteractiveMode {
 				await this.handleTaskCommand(taskCommand);
 				return;
 			}
+			const emailCommand = parseEmailCommand(text);
+			if (emailCommand) {
+				this.editor.setText("");
+				await this.handleEmailCommand(emailCommand);
+				return;
+			}
 			const cronCommand = parseCronCommand(text);
 			if (cronCommand) {
 				this.editor.setText("");
@@ -3706,6 +3715,11 @@ export class InteractiveMode {
 			}
 			if (text === "/projects" || text.startsWith("/projects ")) {
 				this.handleProjectsCommand(text);
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/x" || text.startsWith("/x ")) {
+				this.handleXCommand(text);
 				this.editor.setText("");
 				return;
 			}
@@ -3891,6 +3905,20 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Text(theme.fg("accent", "Projects"), 1, 0));
 		this.chatContainer.addChild(new Text(output, 1, 0));
 		this.ui.requestRender();
+	}
+
+	private handleXCommand(text: string): void {
+		void (async () => {
+			const { runXCommand } = await import("../../porcupine/x-command.ts");
+			const result = await runXCommand(text);
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new Text(theme.fg("accent", "X"), 1, 0));
+			this.chatContainer.addChild(new Text(result.output, 1, 0));
+			this.ui.requestRender();
+		})().catch((error) => {
+			const message = error instanceof Error ? error.message : String(error);
+			this.showWarning(`/x failed: ${message}`);
+		});
 	}
 
 	private handleVoiceCommand(text: string): void {
@@ -4211,6 +4239,45 @@ export class InteractiveMode {
 				const schedule = this.taskStore.setScheduleEnabled(command.scheduleId, command.kind === "resume");
 				this.showStatus(`Cron routine ${schedule.id} is ${schedule.enabled ? "active" : "paused"}.`);
 			}
+		} catch (error) {
+			this.showError(error instanceof Error ? error.message : String(error));
+		}
+	}
+
+	private async handleEmailCommand(command: NonNullable<ReturnType<typeof parseEmailCommand>>): Promise<void> {
+		if (command.kind === "invalid") {
+			this.showWarning(command.message);
+			return;
+		}
+		const settings = this.settingsManager.getEmailSettings();
+		if (!settings) {
+			this.showWarning("Email is not configured. See packages/coding-agent/docs/email.md to set up IMAP/SMTP.");
+			return;
+		}
+		try {
+			const output = await buildEmailCommandOutput(command, {
+				configured: true,
+				connectInfo: {
+					host: settings.host ?? "",
+					user: settings.user ?? "",
+					draftsFolder: settings.draftsFolder ?? "Drafts",
+					sentFolder: settings.sentFolder ?? "Sent Mail",
+				},
+				getClient: async () => {
+					const pass = await readSecret(getAgentDir(), EMAIL_KEYRING_SERVICE, settings.user ?? "");
+					return createEmailClient({
+						host: settings.host ?? "",
+						port: settings.port ?? (settings.secure === false ? 143 : 993),
+						secure: settings.secure ?? true,
+						user: settings.user ?? "",
+						pass,
+						draftsFolder: settings.draftsFolder ?? "Drafts",
+						sentFolder: settings.sentFolder ?? "Sent Mail",
+						timeoutMs: settings.timeoutMs ?? 15000,
+					});
+				},
+			});
+			this.showTaskOutput("Email", output);
 		} catch (error) {
 			this.showError(error instanceof Error ? error.message : String(error));
 		}
