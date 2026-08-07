@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white" alt="TypeScript 5.9" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-EA9B34" alt="MIT" /></a>
   <a href="https://www.npmjs.com/package/@porcupineai/porcupineai"><img src="https://img.shields.io/npm/v/@porcupineai/porcupineai" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@porcupineai/porcupineai"><img src="https://img.shields.io/npm/dm/@porcupineai/porcupineai" alt="npm downloads" /></a>
   <a href="https://github.com/Abd0r/porcupineai"><img src="https://img.shields.io/github/stars/Abd0r/porcupineai" alt="GitHub stars" /></a>
 </p>
 
