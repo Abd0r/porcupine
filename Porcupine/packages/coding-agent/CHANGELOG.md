@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.50] - 2026-08-08
+
 ### Added
 
 - Added `porcupine serve`, a headless HTTP API (OpenCode-style server surface): sessions, async prompts, abort, status, a Server-Sent-Events stream, and programmatic approval responses (`/session/:id/permissions/:id/response`). Loopback-only by default; a token is required for non-loopback binds. See `docs/server.md`.
