@@ -57,6 +57,7 @@ type RenderSessionContextThis = {
 	};
 	applyTaskGraphDisplay(): void;
 	setPorcupineActivity(phase: string, options?: { showInterruptHint?: boolean; force?: boolean }): void;
+	isMessagingToolName(toolName: string): boolean;
 	updateEditorBorderColor(): void;
 	getRegisteredToolDefinition(toolName: string): undefined;
 	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
