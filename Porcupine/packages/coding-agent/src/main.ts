@@ -57,6 +57,7 @@ import { InteractiveMode, runPrintMode, runRpcMode, runServeMode } from "./modes
 import { initTheme, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
 import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { loadAgentEnvFile } from "./porcupine/env-file.ts";
+import { loadUserToolDefinitions } from "./porcupine/user-tools.ts";
 import { getProductEnvironment, setProductEnvironment } from "./product-environment.ts";
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
@@ -784,6 +785,15 @@ export async function main(args: string[], options?: MainOptions) {
 				await modelRuntime.setRuntimeApiKey(sessionOptions.model.provider, parsed.apiKey, { allowNetwork: false });
 				await services.modelRuntime.getAvailable();
 			}
+		}
+
+		// Load persisted user-built tools (user-tools.json) so distilled tools from
+		// /extract-stack /craft-stack become registered and discoverable this session.
+		const userToolDefs = loadUserToolDefinitions(agentDir, (msg) =>
+			diagnostics.push({ type: "warning", message: msg }),
+		);
+		if (userToolDefs.length > 0) {
+			sessionOptions.customTools = [...(sessionOptions.customTools ?? []), ...userToolDefs];
 		}
 
 		const created = await createAgentSessionFromServices({

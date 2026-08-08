@@ -49,6 +49,8 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/cost`                      | Estimated token cost for this session                                     |
 | `/view <path>`               | Open a markdown file in the full-screen viewer                            |
 | `/memory`                    | Show what Porcupine has stored about you and the environment              |
+| [`/extract-stack`](skill-crafting.md) | Distill a local document into a reusable skill/tool under the agent-home skills dir |
+| [`/craft-stack`](skill-crafting.md) | Deep-research a topic with free web search, then craft a discoverable skill/tool |
 | `/init [--force]`            | Generate/merge a compact AGENTS.md project context file                   |
 | `/tree`                      | Jump to any point in the session and continue from there                   |
 | `/trust`                     | Save project trust decision for future sessions                            |

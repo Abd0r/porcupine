@@ -254,6 +254,7 @@ import { getModelSearchText } from "./model-search.ts";
 import { parseReasoningVisibilityCommand } from "./reasoning-visibility.ts";
 import { parseRefreshCommand } from "./refresh-command.ts";
 import { buildRestartArgv, parseRestartCommand } from "./restart-command.ts";
+import { parseStackCommandArgs } from "./stack-command.ts";
 import {
 	getAvailableThemes,
 	getAvailableThemesWithPaths,
@@ -3734,6 +3735,16 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/extract-stack" || text.startsWith("/extract-stack ")) {
+				this.editor.setText("");
+				await this.handleExtractStackCommand(text);
+				return;
+			}
+			if (text === "/craft-stack" || text.startsWith("/craft-stack ")) {
+				this.editor.setText("");
+				await this.handleCraftStackCommand(text);
+				return;
+			}
 			if (text === "/projects" || text.startsWith("/projects ")) {
 				this.handleProjectsCommand(text);
 				this.editor.setText("");
@@ -5809,6 +5820,122 @@ export class InteractiveMode {
 			this.ui.requestRender();
 		} catch (error) {
 			this.showWarning(`Refiner failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Load the skill-crafting meta-skill content into context (as chat guidance)
+	 * for the extract/craft commands. Uses the resource-loader's discovered skill
+	 * so it auto-injects like a context file; falls back to reading the packaged
+	 * SKILL.md directly when the skill is not registered yet.
+	 */
+	private async loadSkillCraftingGuidance(): Promise<string> {
+		try {
+			const meta = this.session.resourceLoader.getSkills().skills.find((s) => s.name === "skill-crafting");
+			if (meta) {
+				return fs.readFileSync(meta.filePath, "utf-8");
+			}
+			const fallback = path.join(process.cwd(), "skills/meta/skill-crafting/SKILL.md");
+			if (fs.existsSync(fallback)) return fs.readFileSync(fallback, "utf-8");
+		} catch {
+			// Fall through to a short inline summary.
+		}
+		return [
+			"# Skill Crafting",
+			"",
+			"Turns a document or a research topic into a discoverable SKILL.md (agent procedure) or a callable shell tool in user-tools.json.",
+			"Write path: agentDir/skills/<stack>/<name>/SKILL.md (skills) or agentDir/user-tools.json (tools).",
+			"Never overwrite a user skill without force. Names/stacks are lowercase a-z, 0-9, hyphens.",
+		].join("\n");
+	}
+
+	/** Dispatch `/extract-stack <path> [--name <n>] [--stack <s>] [--tool]`. */
+	private async handleExtractStackCommand(text: string): Promise<void> {
+		try {
+			const args = parseStackCommandArgs(
+				text.replace(/^\/extract-stack\b/i, "").trim(),
+				["name", "stack", "desc"],
+				["force", "tool"],
+			);
+			if (!args.positionals[0]) {
+				this.showWarning("Usage: /extract-stack <path> [--name <n>] [--stack <s>] [--tool]");
+				return;
+			}
+			const filePath = args.positionals[0]!;
+			const stack = args.flags.stack || "meta";
+			const name =
+				args.flags.name ||
+				path
+					.basename(filePath)
+					.replace(/\.[^.]+$/, "")
+					.toLowerCase()
+					.replace(/[^a-z0-9-]+/g, "-");
+			const kind = args.flags.tool ? "tool" : undefined;
+
+			const guidance = await this.loadSkillCraftingGuidance();
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new Text(theme.fg("accent", `Skill Crafting`), 1, 0));
+			this.chatContainer.addChild(new Text(guidance.split("\n").slice(0, 8).join("\n"), 1, 0));
+			this.ui.requestRender();
+
+			const { extractSkillFromDocument } = await import("../../porcupine/skill-extract.ts");
+			const result = await extractSkillFromDocument(getAgentDir(), {
+				path: filePath,
+				stack,
+				name,
+				description: args.flags.desc,
+				kind,
+				force: args.flags.force === "true",
+			});
+			this.showStatus(`Extracted ${result.kind} "${result.name}" -> ${result.path}`);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.showWarning(`/extract-stack failed: ${message}`);
+		}
+	}
+
+	/** Dispatch `/craft-stack <name> --desc <description> [--stack <s>] [--tool]`. */
+	private async handleCraftStackCommand(text: string): Promise<void> {
+		try {
+			const args = parseStackCommandArgs(
+				text.replace(/^\/craft-stack\b/i, "").trim(),
+				["desc", "stack", "hint"],
+				["force", "tool"],
+			);
+			const name = args.positionals[0];
+			if (!name) {
+				this.showWarning("Usage: /craft-stack <name> --desc <description> [--stack <s>] [--tool]");
+				return;
+			}
+			const stack = args.flags.stack || "meta";
+			const description = args.flags.desc ?? "";
+			if (!description.trim()) {
+				this.showWarning("Usage: /craft-stack <name> --desc <description>");
+				return;
+			}
+			const kind = args.flags.tool ? "tool" : undefined;
+
+			const guidance = await this.loadSkillCraftingGuidance();
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new Text(theme.fg("accent", `Skill Crafting`), 1, 0));
+			this.chatContainer.addChild(new Text(guidance.split("\n").slice(0, 8).join("\n"), 1, 0));
+			this.ui.requestRender();
+
+			const { craftSkill } = await import("../../porcupine/skill-craft.ts");
+			const result = await craftSkill(getAgentDir(), {
+				name,
+				description,
+				stack,
+				researchHint: args.flags.hint,
+				kind,
+				force: args.flags.force === "true",
+			});
+			this.showStatus(
+				`Crafted ${result.kind} "${result.name}" -> ${result.path} (${result.sources.length} sources)`,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.showWarning(`/craft-stack failed: ${message}`);
 		}
 	}
 

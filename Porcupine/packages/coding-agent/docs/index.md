@@ -57,6 +57,7 @@ For the full first-run flow, see [Quickstart](quickstart.md).
 
 - [Extensions](extensions.md) - TypeScript modules for tools, commands, events, and custom UI.
 - [Skills](skills.md) - Agent Skills for reusable on-demand capabilities.
+- [Skill Crafting](skill-crafting.md) - Create discoverable skills/tools from documents or via deep research.
 - [Prompt templates](prompt-templates.md) - reusable prompts that expand from slash commands.
 - [Themes](themes.md) - built-in and custom terminal themes.
 - [Recovering From a Broken Customization](customization-recovery.md) - fix prompts, themes, extensions, or settings that break startup.

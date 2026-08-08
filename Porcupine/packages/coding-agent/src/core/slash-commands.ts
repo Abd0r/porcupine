@@ -177,6 +177,17 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Ambient-awareness email over IMAP/SMTP (status, drafts, inbox, read, draft, send)",
 		argumentHint: "[status|drafts|inbox|read <id>|draft --to x --subject y --body z|send <draftId>]",
 	},
+	{
+		name: "extract-stack",
+		description:
+			"Distill a local document (.md/.txt/.pdf) into a reusable skill/tool under the agent-home skills dir",
+		argumentHint: "<path> [--name <n>] [--stack <s>] [--tool]",
+	},
+	{
+		name: "craft-stack",
+		description: "Deep-research a topic with free web search, then craft a discoverable skill/tool",
+		argumentHint: "<name> --desc <description> [--stack <s>] [--tool]",
+	},
 	{ name: "quit", description: `Quit ${APP_NAME}` },
 	{
 		name: "x",

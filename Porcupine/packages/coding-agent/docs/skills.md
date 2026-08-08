@@ -2,6 +2,9 @@
 
 # Skills
 
+Porcupine can create new skills for you: use `/extract-stack` to distill a local document into a reusable skill, or `/craft-stack` to deep-research a topic and then build one. Both write real SKILL.md files (or callable tools) into the agent-home skills dir so they become discoverable and load on demand. See [Skill Crafting](skill-crafting.md).
+
+
 Skills are self-contained capability packages that the agent loads on-demand. A skill provides specialized workflows, setup instructions, helper scripts, and reference documentation for specific tasks.
 
 Porcupine implements the [Agent Skills standard](https://agentskills.io/specification), warning about most violations but remaining lenient. Porcupine allows skill names to differ from their parent directory even though the standard disallows it; that rule is suboptimal for shared skill directories used across multiple agent harnesses.

@@ -244,6 +244,24 @@ import {
 } from "./session-search.ts";
 import { createShowMarkdownTool, createShowMarkdownToolDefinition } from "./show-markdown.ts";
 import {
+	createCraftSkillTool,
+	createCraftSkillToolDefinition,
+	createExtractSkillTool,
+	createExtractSkillToolDefinition,
+} from "./skill-tools.ts";
+
+export {
+	type CraftSkillToolInput,
+	createCraftSkillTool,
+	createCraftSkillToolDefinition,
+	createExtractSkillTool,
+	createExtractSkillToolDefinition,
+	type ExtractSkillToolInput,
+	type SkillToolDetails,
+	type SkillToolOptions,
+} from "./skill-tools.ts";
+
+import {
 	createSendToSubagentToolDefinition,
 	createStopSubagentToolDefinition,
 	createSubagentToolDefinition,
@@ -310,7 +328,9 @@ export type ToolName =
 	| "browser_type"
 	| "browser_extract"
 	| "browser_screenshot"
-	| "browser_evaluate";
+	| "browser_evaluate"
+	| "extract_skill"
+	| "craft_skill";
 export const allToolNames: Set<ToolName> = new Set([
 	"ask_question",
 	"read",
@@ -349,6 +369,8 @@ export const allToolNames: Set<ToolName> = new Set([
 	"browser_extract",
 	"browser_screenshot",
 	"browser_evaluate",
+	"extract_skill",
+	"craft_skill",
 ]);
 
 export interface ToolsOptions {
@@ -500,6 +522,8 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		browser_extract: createBrowserExtractToolDefinition(),
 		browser_screenshot: createBrowserScreenshotToolDefinition(),
 		browser_evaluate: createBrowserEvaluateToolDefinition(),
+		extract_skill: createExtractSkillToolDefinition(),
+		craft_skill: createCraftSkillToolDefinition(),
 	};
 }
 
@@ -608,5 +632,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		browser_extract: createBrowserExtractTool(),
 		browser_screenshot: createBrowserScreenshotTool(),
 		browser_evaluate: createBrowserEvaluateTool(),
+		extract_skill: createExtractSkillTool(),
+		craft_skill: createCraftSkillTool(),
 	};
 }
