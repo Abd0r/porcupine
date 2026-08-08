@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import lockfile from "proper-lockfile";
+import { lockDirSync } from "../core/sync-lock.ts";
 
 export type PorcupineTaskStatus = "ready" | "running" | "completed" | "failed" | "paused" | "cancelled";
 export type PorcupineTaskRunStatus = "claimed" | "running" | "completed" | "failed" | "cancelled" | "unknown";
@@ -396,10 +396,9 @@ export class PorcupineTaskStore {
 		const filePath = storePath(this.agentDir);
 		const directory = dirname(filePath);
 		mkdirSync(directory, { recursive: true });
-		const release = lockfile.lockSync(directory, {
+		const release = lockDirSync(directory, {
 			lockfilePath: join(directory, ".tasks.lock"),
 			realpath: false,
-			retries: { retries: 0 },
 			stale: 30_000,
 		});
 		try {

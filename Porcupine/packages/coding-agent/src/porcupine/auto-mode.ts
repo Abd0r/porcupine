@@ -210,7 +210,11 @@ const HARDLINE: Array<{ re: RegExp; key: string; description: string }> = [
 
 const DANGEROUS: Array<{ re: RegExp; key: string; description: string }> = [
 	{
-		re: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f?\b|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r\b/i,
+		// Recursive+force delete in ANY flag arrangement: clustered short flags
+		// (-rf, -fr, -r, -f), split short flags (rm -f -r), and GNU long flags
+		// (--recursive/--force). Lookaheads require both flags somewhere in the
+		// same command, so no spelling escapes the guard.
+		re: /\brm\b(?=[^;\n]*(?:\s+--?[a-zA-Z-]*r[a-zA-Z-]*)(?:\s|$))(?=[^;\n]*(?:\s+--?[a-zA-Z-]*f[a-zA-Z-]*)(?:\s|$))/i,
 		key: "rm-rf",
 		description: "recursive force delete",
 	},
@@ -342,13 +346,20 @@ export type BashGuardMode = "ask" | "normal" | "auto";
 
 /** Extract the target paths of an `rm -rf`-family command (best effort). */
 function extractRmTargets(command: string): string[] {
-	const match = /^\s*rm\s+(?:-[a-zA-Z]*[rf][a-zA-Z]*\s+)+(?:--\s+)?(.+)$/.exec(command);
+	const match = /^\s*rm\s+(.*)$/.exec(command);
 	if (!match) return [];
+	// Strip flags (short clusters, split short flags, and GNU long flags) so
+	// the remaining tokens are the target paths. Mirrors the detector above.
 	return match[1]
 		.split(/\s+/)
 		.filter(Boolean)
 		.map((token) => token.replace(/^(["'])|(["'])$/g, ""))
-		.filter((token) => token !== "--" && !(token.startsWith("-") && token.length > 1));
+		.filter(
+			(token) =>
+				token !== "--" &&
+				!(token.startsWith("--") && token.length > 2) &&
+				!(token.startsWith("-") && token.length > 1),
+		);
 }
 
 /** Expand a leading `~` or `$HOME` in a shell path token. */

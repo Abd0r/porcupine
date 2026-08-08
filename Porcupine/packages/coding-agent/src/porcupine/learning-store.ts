@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { dirname, join } from "node:path";
 import { type ArtifactChange, describeArtifactChange, UserPatternLearningLoop } from "@porcupineai/agent-core";
 import { createNodeUserPatternLearningAdapters } from "@porcupineai/agent-core/node";
-import lockfile from "proper-lockfile";
+import { lockDirSync } from "../core/sync-lock.ts";
 import { inferLearningStack } from "./capability-learning.ts";
 import { checkRollback, recordSkillUse } from "./evidence-counter.ts";
 import { extractUserPatternsHeuristic, memoryPath, mutateMemory, readMemoryFile } from "./memory-store.ts";
@@ -361,10 +361,9 @@ export function appendSkillLearningEntry(
 	// sessions/processes appending to the same Learnings.md can't lose each
 	// other's entries (last-writer-wins on the full-file rewrite).
 	mkdirSync(dir, { recursive: true });
-	const release = lockfile.lockSync(dir, {
+	const release = lockDirSync(dir, {
 		lockfilePath: join(dir, ".learning.lock"),
 		realpath: false,
-		retries: { retries: 0 },
 		stale: 30_000,
 	});
 	try {

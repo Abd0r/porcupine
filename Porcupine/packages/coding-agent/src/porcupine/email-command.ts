@@ -71,9 +71,9 @@ export function parseEmailCommand(text: string): EmailCommand | null {
 
 function parseDraftCommand(tokens: string[]): EmailCommand {
 	const flags = parseFlags(tokens);
-	const to = flags["to"] ?? "";
-	const subject = flags["subject"]?.trim() ?? "";
-	const body = flags["body"];
+	const to = flags.to ?? "";
+	const subject = flags.subject?.trim() ?? "";
+	const body = flags.body;
 	if (!to || body === undefined || subject === undefined) {
 		return {
 			kind: "invalid",

@@ -2258,7 +2258,11 @@ export class InteractiveMode {
 		await this.bindCurrentSessionExtensions();
 
 		if (this.session !== session) {
+			// The bind replaced the session: re-wire confirmations AND subscribe to
+			// the NEW session's agent events (the pre-bind subscription, if any,
+			// still points at the old session and must not be reused).
 			this.wireModeConfirmations();
+			this.subscribeToAgent();
 			this.subscribeToSubagents();
 			return;
 		}
@@ -3907,6 +3911,9 @@ export class InteractiveMode {
 	}
 
 	private subscribeToAgent(): void {
+		// Self-cleaning: drop any prior agent subscription first so rebinds can
+		// never double-subscribe or leak a listener on the replaced session.
+		this.unsubscribe?.();
 		this.unsubscribe = this.session.subscribe(async (event) => {
 			await this.handleEvent(event);
 		});
@@ -8026,6 +8033,7 @@ export class InteractiveMode {
 
 		const childArgv = buildRestartArgv({
 			entryPath,
+			originalArgs: process.argv.slice(2),
 			sessionId,
 			sessionFile,
 			sessionDir: this.sessionManager.getSessionDir(),

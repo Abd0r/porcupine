@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import type { TSchema } from "typebox";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../core/extensions/types.ts";
+import { validateName } from "./skill-writer.ts";
 
 /** Minimal ToolDefinition shape produced from a persisted user-tool record. */
 export interface UserDistilledToolDefinition {
@@ -120,6 +121,10 @@ export function loadUserTools(agentDir: string, warn: (msg: string) => void = co
  * Fails cleanly when a tool with the same name already exists unless `force`.
  */
 export function writeUserTool(agentDir: string, record: UserToolRecord, opts: { force?: boolean } = {}): void {
+	// Same name contract as skills: a shell-metachar name would let the
+	// record's echoed fallback command escape into arbitrary execution.
+	const nameError = validateName(record.name);
+	if (nameError) throw new Error(`Invalid tool name: ${nameError}`);
 	const path = userToolsPath(agentDir);
 	const existing = loadUserTools(agentDir, () => undefined);
 	if (existing.some((t) => t.name === record.name) && !opts.force) {
@@ -142,7 +147,8 @@ function schemaFromParams(params: UserToolParams) {
 /**
  * Escape a value for safe single-quoted shell embedding.
  */
-function shellQuote(value: unknown): string {
+/** Escape a value for single-quoted shell embedding. */
+export function shellQuote(value: unknown): string {
 	const s = String(value ?? "");
 	return `'${s.replace(/'/g, "'\\''")}'`;
 }

@@ -17,8 +17,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import lockfile from "proper-lockfile";
 import { getAgentDir } from "../config.ts";
+import { lockDirSync } from "../core/sync-lock.ts";
 import { runFreeWebSearch, type WebSearchHit } from "../core/tools/web-search.ts";
 
 // ============================================================================
@@ -239,10 +239,9 @@ export class XDrafts {
 	private mutate<T>(operation: (data: DraftsData) => T): T {
 		const path = draftsPath(this.agentDir);
 		mkdirSync(dirname(path), { recursive: true });
-		const release = lockfile.lockSync(dirname(path), {
+		const release = lockDirSync(dirname(path), {
 			lockfilePath: join(dirname(path), ".xdrafts.lock"),
 			realpath: false,
-			retries: { retries: 0 },
 			stale: 30_000,
 		});
 		try {

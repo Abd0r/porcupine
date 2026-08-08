@@ -71,8 +71,15 @@ function readBody(req: IncomingMessage): Promise<string> {
 		req.on("data", (chunk: Buffer) => {
 			size += chunk.length;
 			if (size > MAX_BODY_BYTES) {
-				reject(new Error("payload too large"));
-				req.destroy();
+				// Stop reading and reject with a clean 413: destroying the socket
+				// here makes the catch write a 500 into a dead socket (EPIPE) and
+				// the client never sees a status. Removing the listeners lets the
+				// caller respond before the socket is torn down.
+				req.removeAllListeners("data");
+				req.removeAllListeners("end");
+				const error = new Error("payload too large") as Error & { statusCode?: number };
+				error.statusCode = 413;
+				reject(error);
 				return;
 			}
 			chunks.push(chunk);
@@ -243,7 +250,16 @@ export function createServeApi(options: ServeApiOptions): ServeApiHandle {
 			json(res, 404, { error: `no route for ${method} ${path}` });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			json(res, 500, { error: message });
+			// readBody rejects with a statusCode for size violations (413): honor it
+			// instead of always answering 500.
+			const status =
+				typeof error === "object" &&
+				error !== null &&
+				"statusCode" in error &&
+				typeof (error as { statusCode?: unknown }).statusCode === "number"
+					? (error as { statusCode: number }).statusCode
+					: 500;
+			json(res, status, { error: message });
 		}
 	});
 

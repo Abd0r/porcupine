@@ -52,9 +52,9 @@ Try: *"Summarize this repository and tell me how to run its checks."*
 
 ## Recommended providers
 
-Two ways to run Porcupine, both set up in under a minute with `/login`.
+Two ways to run Porcupine, both set up in under a minute with `/login`. Same models, two routes: free or paid.
 
-### Cline API (free) — best for testing
+### Cline API (free)
 
 Free tier, no OAuth, no billing. One key unlocks DeepSeek V4 Flash and more.
 
@@ -65,9 +65,9 @@ Free tier, no OAuth, no billing. One key unlocks DeepSeek V4 Flash and more.
 4. /model → cline/deepseek/deepseek-v4-flash   (free, reasoning-capable)
 ```
 
-### OpenCode Go (paid) — the flagship model
+### OpenCode Go (paid)
 
-Subscription key for the best coding performance (DeepSeek V4 Flash / V4 Pro).
+Subscription key for the same DeepSeek V4 Flash (plus V4 Pro and the full model catalog), with paid-tier rate limits.
 
 ```text
 1. Get an API key at opencode.ai/auth

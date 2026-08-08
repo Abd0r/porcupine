@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type { SkillKind } from "./skill-writer.ts";
 import { EXTRACT_TEXT_CAP, extractDocumentText, writeSkill } from "./skill-writer.ts";
 import type { UserToolRecord } from "./user-tools.ts";
-import { writeUserTool } from "./user-tools.ts";
+import { shellQuote, writeUserTool } from "./user-tools.ts";
 
 export interface ExtractOptions {
 	path: string;
@@ -160,7 +160,8 @@ export function distillToToolRecord(input: {
 		})
 		.filter((c): c is string => Boolean(c) && typeof c === "string" && /\s/.test(c))
 		.filter((c) => !/^def |^import |^const |^let \b/i.test(c));
-	const command = commands.at(0) ?? `echo '<${input.name}>' > /dev/null; echo "Run: ${input.description}"`;
+	const command =
+		commands.at(0) ?? `echo ${shellQuote(input.name)} > /dev/null; echo ${shellQuote(`Run: ${input.description}`)}`;
 
 	const record: UserToolRecord = {
 		name: input.name,

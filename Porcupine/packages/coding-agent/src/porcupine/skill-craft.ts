@@ -10,7 +10,7 @@ import { extractUrl } from "../core/tools/web-extract.ts";
 import { runFreeWebSearch, type WebSearchHit } from "../core/tools/web-search.ts";
 import type { SkillKind } from "./skill-writer.ts";
 import { skillFrontmatter, writeSkill } from "./skill-writer.ts";
-import { type UserToolRecord, writeUserTool } from "./user-tools.ts";
+import { shellQuote, type UserToolRecord, writeUserTool } from "./user-tools.ts";
 
 export interface SourceNote {
 	title: string;
@@ -171,7 +171,7 @@ export async function craftSkill(agentDir: string, opts: CraftOptions): Promise<
 			name: opts.name,
 			description: opts.description,
 			parameters: {},
-			command: opts.researchHint?.trim() || `echo "${opts.name} tool - see sources"`,
+			command: opts.researchHint?.trim() || `echo ${shellQuote(`${opts.name} tool - see sources`)}`,
 		};
 		writeUserTool(agentDir, record, { force: opts.force });
 		return {
