@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.1.52] - 2026-08-08
+
+### Fixed
+
+- Tool registration integrity: `createTool`/`createToolDefinition` now delegate to the all-tools maps, so every `ToolName` resolves instead of throwing "Unknown tool name" on valid names (subagent tools, `mcp_resources`, all `browser_*`, `tasks`, `projects`, `literature`).
+- Script event triggers no longer re-fire on every idle drain: they dedupe on exit-code change (mirroring the file-trigger hash guard), preventing unbounded task re-runs.
+- Task run-result notification fires only after the run's terminal state is persisted, and a throwing notifier can never block or corrupt the store (regression tests kept green).
+- `show_markdown` enforces the 200 KiB cap on inline `content` too, matching the `path` and `/view` branches.
+- Browser session closes partially-created handles on launch failure (no orphaned Chromium).
+- Email `readMessage` All Mail fallback skips missing folders, so non-Gmail providers get clean "not found" instead of a network error.
+- Learning-store `Learnings.md` appends use the store directory lock (no lost concurrent appends).
+- Serve API returns 400 (not 500) for malformed permission ids.
+
+
 ## [0.1.51] - 2026-08-08
 
 ### Added
