@@ -52,6 +52,11 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/memory`                    | Show what Porcupine has stored about you and the environment              |
 | [`/extract-stack`](skill-crafting.md) | Distill a local document into a reusable skill/tool under the agent-home skills dir |
 | [`/craft-stack`](skill-crafting.md) | Deep-research a topic with free web search, then craft a discoverable skill/tool |
+| `/subagents`                | List/recall past sub-agent runs (full transcripts, resumable after budget) |
+
+Tools: `craft_skill` and `extract_skill` are the agent-facing equivalents of
+`/craft-stack` and `/extract-stack` — the agent can write new skills and
+distilled command tools itself (persisted under the agent home).
 | `/init [--force]`            | Generate/merge a compact AGENTS.md project context file                   |
 | `/tree`                      | Jump to any point in the session and continue from there                   |
 | `/trust`                     | Save project trust decision for future sessions                            |

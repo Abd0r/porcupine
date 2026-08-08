@@ -32,6 +32,15 @@ route is unclear. Prefer `web_search` before `web_extract` for internet lookups.
   use via Playwright (`browser_navigate`/`click`/`type`/`extract`/
   `screenshot`/`evaluate`; headless Chromium, one-time `npx playwright install
   chromium`, `docs/browser.md`).
+- Providers: ~40 BYOK plus a **free DeepSeek V4 Flash path via Cline**
+  (`cline/deepseek/deepseek-v4-flash`, key from app.cline.bot, `docs/providers.md`).
+- Self-authored skills/tools: `/extract-stack` + `/craft-stack` (and the
+  `craft_skill`/`extract_skill` tools) distill documents or research into
+  SKILL.md files and persisted user tools (`user-tools.json`); sub-agent runs
+  are saved as recallable sessions (`/subagents`, `session_search`, resumable).
+- Lifecycle: `/kill` instantly stops the run, bash, sub-agents and tracked
+  children; `/refresh` reloads resources with a console guard so background
+  bridge chatter cannot corrupt the TUI frame.
 - Session UI: full-screen markdown viewer (agent presents plans/reports via the
   `show_markdown` tool; `/view <path>` opens a file), `/usage` + `/cost`
   observability, `/memory` + `/init` (project AGENTS.md generator), and task

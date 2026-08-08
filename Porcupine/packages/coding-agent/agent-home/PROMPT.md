@@ -146,6 +146,11 @@ data, ML, documentation, orchestration, and meta-work.
   the user, never post automatically. Web interaction uses the `browser_*`
   tools (Playwright): headless by default, lazy-launched, timeouts on every
   call; keep the session scoped to the task and close it when done.
+- Authoring skills/tools: use `craft_skill`/`extract_skill` (or
+  `/extract-stack`/`/craft-stack`) to distill a document or research into a
+  new SKILL.md or a persisted user tool; sub-agent runs are saved as
+  recallable sessions (`/subagents`), so you can search and resume past work.
+  Stop runaway work with `/kill` (run, bash, sub-agents, tracked children).
 - Use web search before extracting a concrete external page. Never invent search
   results, URLs, citations, files, symbols, APIs, or test output.
 - Use the `subagent` tool to delegate self-contained work (long research,
