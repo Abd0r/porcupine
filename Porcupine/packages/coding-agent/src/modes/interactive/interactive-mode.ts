@@ -2241,8 +2241,11 @@ export class InteractiveMode {
 		return bridges;
 	}
 
+	private rebindGeneration = 0;
+
 	private async rebindCurrentSession(options: { renderBeforeBind?: boolean } = {}): Promise<void> {
 		const session = this.session;
+		const generation = ++this.rebindGeneration;
 
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
@@ -2258,12 +2261,16 @@ export class InteractiveMode {
 		await this.bindCurrentSessionExtensions();
 
 		if (this.session !== session) {
-			// The bind replaced the session: re-wire confirmations AND subscribe to
-			// the NEW session's agent events (the pre-bind subscription, if any,
-			// still points at the old session and must not be reused).
+			// The bind replaced the session. Re-wire confirmations and subscribe
+			// to the NEW session's agent events — but only if a newer rebind has
+			// not already taken ownership (its renderBeforeBind subscribed to the
+			// now-current session). Without the generation guard, an overlapping
+			// stale rebind would double-subscribe the new session.
 			this.wireModeConfirmations();
-			this.subscribeToAgent();
 			this.subscribeToSubagents();
+			if (generation === this.rebindGeneration) {
+				this.subscribeToAgent();
+			}
 			return;
 		}
 
