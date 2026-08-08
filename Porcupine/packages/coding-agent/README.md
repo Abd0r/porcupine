@@ -20,6 +20,8 @@ npm link
 
 Then run it in a project: `porcupine`. (CLI: `porcupine` · config: `~/.porcupine/agent/`.)
 
+**Free model:** `/login cline` (free key from app.cline.bot) → `/model` → `cline/deepseek/deepseek-v4-flash`. Or the flagship: `/login opencode-go` → `opencode-go/deepseek-v4-flash:high`. See [Recommended providers](https://github.com/Abd0r/porcupineai#recommended-providers).
+
 ## What it is
 
 An agent loop in your terminal. You state the goal; the harness handles the

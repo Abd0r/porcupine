@@ -34,7 +34,7 @@
 
 - Added `porcupine serve`, a headless HTTP API (OpenCode-style server surface): sessions, async prompts, abort, status, a Server-Sent-Events stream, and programmatic approval responses (`/session/:id/permissions/:id/response`). Loopback-only by default; a token is required for non-loopback binds. See `docs/server.md`.
 - Added a full-screen markdown viewer: the agent can present plans/reports with the `show_markdown` tool (path or inline content, 200 KB cap), and you can open any file with `/view <path>`.
-- Added two-way bridge commands (JARVIS-style control surface): owner chat messages starting with `!` dispatch `!status`, `!tasks`, `!run <taskId>`, and `!help` across Telegram/Discord/iMessage.
+- Added two-way bridge commands (remote control from your phone): owner chat messages starting with `!` dispatch `!status`, `!tasks`, `!run <taskId>`, and `!help` across Telegram/Discord/iMessage.
 - Added in-harness observability: `/usage` (per-turn token table + totals) and `/cost` (estimated cost reusing the ai package's per-model pricing; `n/a` when no cost config).
 - Added `/memory` (view USER.md/MEMORY.md entries + learning evidence) and `/init [--force]` (generate/merge a compact AGENTS.md project context file; conservative merge never deletes user lines). Learned skills now append dated `Learnings.md` entries.
 - Extended tasks/cron: task chaining (`next` / `nextOnFail` with cycle guard) and event triggers (`file` content-change with SHA-256 + optional regex, `script` exit-code checks), plus `patch`/`chain`/`status` tool actions and `notifyOnTaskCompletion` bridge notifications (default on).
