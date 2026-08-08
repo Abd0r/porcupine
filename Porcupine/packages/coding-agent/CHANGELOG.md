@@ -2,10 +2,20 @@
 
 ## [Unreleased]
 
+## [0.1.55] - 2026-08-08
+
+### Security
+
+- Deep safety audit fixes: write-then-execute is closed (recently-written scripts are content-scanned by the bash gate), Auto hardline now catches path-equivalents of root deletes plus `kill -- -1`, `init 0`, `telinit 0`, the serve API requires a token on any non-loopback bind and rejects cross-origin requests (unguessable permission ids), bash output strips ANSI/terminal escapes, and the browser blocks private/internal hosts by default with screenshot paths constrained to the workspace.
+
 ### Added
 
 - Recursive-delete safety refined: `rm -rf` intent is inferred from scope. Inside the workspace (the session project) recursive deletes run freely in Auto/Normal; outside the workspace they stay flagged; protected paths (root, system dirs, plus the new `safety.protectedPaths` setting) are hardline-blocked in every mode, and deleting the working directory itself is always blocked. Path equivalences and write-then-execute script content are covered by the same detector.
+- Sub-agent sessions: every sub-agent run persists its full transcript as a normal session file (tagged, same store/format, 4MB cap, retention 100). `/resume` excludes them; `session_search` and the new `/subagents` command recall them; budget-exhausted runs are recoverable.
 
+### Fixed
+
+- 3592 regression tool list gains `craft_skill` + `extract_skill`.
 
 ## [0.1.53] - 2026-08-08
 
@@ -16,8 +26,22 @@
 ### Fixed
 
 - iMessage bridge fails cleanly on modern macOS (AppleScript message access no longer works) with one clear message instead of spamming poll errors; `is from me` replaced with a sender-handle comparison.
-- `/restart` + `/refresh` deep-review fixes: console guard keeps background warnings out of the TUI frame, bridges stop/restart around refresh, restart waits for the child spawn (failed respawns exit non-zero), sub-agent/bash guards block while workers are active, refresh disposes the old SessionManager first, and `.env` is re-applied on restart.
+- `/restart` + `/refresh` deep-review fixes: console guard keeps background warnings out of the TUI frame, bridges stop/restart around refresh, restart waits for the child spawn (failed respawns exit non-zero), sub-agent/bash guards block while workers are active, refresh disposes the old SessionManager first, and `.env` is re-applied on restart.### Added
 
+- Recursive-delete safety refined: `rm -rf` intent is inferred from scope. Inside the workspace (the session project) recursive deletes run freely in Auto/Normal; outside the workspace they stay flagged; protected paths (root, system dirs, plus the new `safety.protectedPaths` setting) are hardline-blocked in every mode, and deleting the working directory itself is always blocked. Path equivalences and write-then-execute script content are covered by the same detector.
+## [0.1.55] - 2026-08-08
+
+### Security
+
+- Deep safety audit fixes: write-then-execute is closed (recently-written scripts are content-scanned by the bash gate), Auto hardline now catches path-equivalents of root deletes plus `kill -- -1`, `init 0`, `telinit 0`, the serve API requires a token on any non-loopback bind and rejects cross-origin requests (unguessable permission ids), bash output strips ANSI/terminal escapes, and the browser blocks private/internal hosts by default with screenshot paths constrained to the workspace.
+
+### Added
+
+- Sub-agent sessions: every sub-agent run persists its full transcript as a normal session file (tagged, same store/format, 4MB cap, retention 100). `/resume` excludes them; `session_search` and the new `/subagents` command recall them; budget-exhausted runs are recoverable.
+
+### Fixed
+
+- 3592 regression tool list gains `craft_skill` + `extract_skill`.
 
 ## [0.1.52] - 2026-08-08
 
