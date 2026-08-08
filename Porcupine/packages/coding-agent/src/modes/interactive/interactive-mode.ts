@@ -559,6 +559,10 @@ export class InteractiveMode {
 
 	// Streaming message tracking
 	private streamingComponent: AssistantMessageComponent | undefined = undefined;
+	/** Last streaming-parse timestamp: mid-stream markdown parses are throttled. */
+	private streamingLastParseAt: number | undefined;
+	/** Minimum interval between mid-stream markdown re-parses (ms). */
+	private static readonly STREAMING_PARSE_INTERVAL_MS = 120;
 	private streamingMessage: AssistantMessage | undefined = undefined;
 
 	// Tool execution tracking: toolCallId -> component
@@ -4595,7 +4599,18 @@ export class InteractiveMode {
 			case "message_update":
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
-					this.streamingComponent.updateContent(this.streamingMessage, true);
+					// Streaming updates re-parse the whole accumulated markdown from
+					// scratch (clear + new Markdown per block): one parse per token
+					// batch is O(n^2) in stream length. Throttle mid-stream parses;
+					// message_end always performs the final full parse.
+					const now = performance.now();
+					if (
+						this.streamingLastParseAt === undefined ||
+						now - this.streamingLastParseAt >= InteractiveMode.STREAMING_PARSE_INTERVAL_MS
+					) {
+						this.streamingLastParseAt = now;
+						this.streamingComponent.updateContent(this.streamingMessage, true);
+					}
 
 					let sawToolCall = false;
 					let sawThinking = false;
