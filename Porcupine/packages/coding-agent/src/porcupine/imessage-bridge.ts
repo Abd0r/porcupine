@@ -122,13 +122,17 @@ export class IMessageBridge {
 	}
 
 	private fetchChatMessages(chatId: string): Promise<Array<{ id: string; text: string; fromMe: boolean }>> {
+		const handle = chatId.split(";-;").pop() ?? chatId;
+		const selfHandle = handle.replace(/^\+/, "");
 		const script = [
 			'tell application "Messages"',
 			`\tset chatId to "${appleScriptEscape(chatId)}"`,
 			"\tset sep to ASCII character 1",
 			'\tset out to ""',
 			"\trepeat with m in messages of chat id chatId",
-			"\t\tset out to out & (id of m) & sep & (text of m) & sep & (is from me of m) & linefeed",
+			// ``is from me`` does not parse on modern macOS; compare the sender
+			// handle against the chat handle instead (sender is a plain property).
+			"\t\tset out to out & (id of m) & sep & (text of m) & sep & (sender of m) & linefeed",
 			"\tend repeat",
 			"\treturn out",
 			"end tell",
@@ -138,9 +142,10 @@ export class IMessageBridge {
 			for (const line of stdout.split("\n")) {
 				const parts = line.split(SEP);
 				if (parts.length !== 3) continue;
-				const [id, text = "", fromMeRaw] = parts;
+				const [id, text = "", sender] = parts;
 				if (!id) continue;
-				result.push({ id, text, fromMe: fromMeRaw?.trim() === "true" });
+				const senderClean = (sender ?? "").trim().replace(/^\+/, "");
+				result.push({ id, text, fromMe: senderClean === selfHandle });
 			}
 			return result;
 		});
@@ -411,6 +416,18 @@ export class IMessageBridge {
 			this.running = false;
 			throw new Error("No allowed chats. Set PORCUPINE_IMESSAGE_ALLOW to chat ids or phone/email handles.");
 		}
+		// Modern macOS (AppleScript ``messages of chat`` / ``is from me`` no longer
+		// parse or resolve) cannot be driven through Messages' scripting bridge.
+		// Probe once so we fail fast with one clear message instead of spamming a
+		// poll error every few seconds.
+		const readable = await this.probeReadable(this.pollChats[0]!).catch(() => false);
+		if (!readable) {
+			this.running = false;
+			throw new Error(
+				"iMessage bridge is not supported on this macOS: Messages.app cannot be read via AppleScript. " +
+					"Use the Telegram or Discord bridge instead (PORCUPINE_TELEGRAM_TOKEN / PORCUPINE_DISCORD_TOKEN).",
+			);
+		}
 		this.pollTimer = setInterval(() => {
 			for (const chatId of this.pollChats) {
 				void this.pollChat(chatId).catch(() => {});
@@ -420,6 +437,12 @@ export class IMessageBridge {
 		for (const chatId of this.pollChats) {
 			void this.pollChat(chatId).catch(() => {});
 		}
+	}
+
+	/** One-shot read of a chat to detect whether Messages is scriptable on this macOS. */
+	private async probeReadable(chatId: string): Promise<boolean> {
+		const messages = await this.fetchChatMessages(chatId);
+		return Array.isArray(messages);
 	}
 
 	async stop(): Promise<void> {
