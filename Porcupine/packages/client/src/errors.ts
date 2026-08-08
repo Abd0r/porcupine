@@ -26,6 +26,18 @@ export class PiClientDisposedError extends Error {
 	}
 }
 
+export class PiRequestTimeoutError extends Error {
+	readonly command: string;
+	readonly timeoutMs: number;
+
+	constructor(command: string, timeoutMs: number) {
+		super(`Pi request "${command}" timed out after ${timeoutMs}ms`);
+		this.name = "PiRequestTimeoutError";
+		this.command = command;
+		this.timeoutMs = timeoutMs;
+	}
+}
+
 export class PiSessionOwnershipError extends Error {
 	readonly sessionId: string;
 

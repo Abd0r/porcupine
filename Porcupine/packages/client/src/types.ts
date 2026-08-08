@@ -15,6 +15,8 @@ export interface PiClientOptions {
 	token: string;
 	transportFactory: ByteTransportFactory;
 	maxFrameLength?: number;
+	/** Timeout in ms before an unanswered request rejects with {@link PiRequestTimeoutError}. Defaults to 60000. */
+	requestTimeoutMs?: number;
 	/** Reports subscriber failures without allowing them to corrupt client state. */
 	onListenerError?: ListenerErrorHandler;
 }

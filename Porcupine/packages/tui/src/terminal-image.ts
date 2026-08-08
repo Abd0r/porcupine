@@ -608,8 +608,29 @@ export function renderImage(
  * @param text - The visible text to display
  * @param url - The URL to link to
  */
+/**
+ * Strip terminal control bytes from untrusted string content before it is
+ * embedded in an escape sequence (OSC 8 URLs, OSC 2 titles) or echoed as raw
+ * HTML passthrough. Prevents model-controlled input from breaking out of a
+ * hyperlink/title with its own C0/C1 control sequences (e.g. `\x1b[2J` clear
+ * screen, `\x1b]0;TITLE\x07` title-set).
+ */
+export function sanitizeTerminalText(input: string): string {
+	// C0 controls (\x00-\x1F), C1 controls (\x80-\x9F), and DEL (\x7F) are
+	// never legitimate link destinations or title text. Strip DEL but keep the
+	// printable ASCII range and all multi-byte unicode.
+	// eslint-disable-next-line no-control-regex
+	return input.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
+
+/**
+ * Wrap text in an OSC 8 hyperlink sequence.
+ * The URL is sanitized so terminal controls cannot escape the hyperlink.
+ * @param text - The visible text to display
+ * @param url - The URL to link to
+ */
 export function hyperlink(text: string, url: string): string {
-	return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+	return `\x1b]8;;${sanitizeTerminalText(url)}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
 /** Shorten home-prefixed absolute paths to ~/... for compact display. */

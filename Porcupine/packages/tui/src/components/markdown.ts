@@ -1,5 +1,5 @@
 import { Marked, type Token, Tokenizer, type Tokens } from "marked";
-import { getCapabilities, hyperlink, isImageLine } from "../terminal-image.ts";
+import { getCapabilities, hyperlink, isImageLine, sanitizeTerminalText } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
 import { applyBackgroundToLine, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
 
@@ -473,7 +473,7 @@ export class Markdown implements Component {
 			case "html":
 				// Render HTML as plain text (escaped for terminal)
 				if ("raw" in token && typeof token.raw === "string") {
-					lines.push(this.applyDefaultStyle(token.raw.trim()));
+					lines.push(this.applyDefaultStyle(sanitizeTerminalText(token.raw.trim())));
 				}
 				break;
 
@@ -497,7 +497,9 @@ export class Markdown implements Component {
 		const resolvedStyleContext = styleContext ?? this.getDefaultInlineStyleContext();
 		const { applyText, stylePrefix } = resolvedStyleContext;
 		const applyTextWithNewlines = (text: string): string => {
-			const segments: string[] = text.split("\n");
+			// Sanitize per segment: the sanitizer strips C0 controls, which
+			// includes the newlines that delimit multi-line content.
+			const segments: string[] = text.split("\n").map((segment) => sanitizeTerminalText(segment));
 			return segments.map((segment: string) => applyText(segment)).join("\n");
 		};
 
@@ -572,7 +574,7 @@ export class Markdown implements Component {
 				case "html":
 					// Render inline HTML as plain text
 					if ("raw" in token && typeof token.raw === "string") {
-						result += applyTextWithNewlines(token.raw);
+						result += applyTextWithNewlines(sanitizeTerminalText(token.raw));
 					}
 					break;
 

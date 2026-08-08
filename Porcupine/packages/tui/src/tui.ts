@@ -742,6 +742,21 @@ export abstract class TuiBase extends Container implements TUI {
 		this.afterTerminalStop();
 	}
 
+	/**
+	 * Run a render pass, guarding against component errors so a single
+	 * misbehaving component cannot tear down the whole TUI. On error, surface a
+	 * clean one-line message to stderr instead of crashing the process.
+	 */
+	private runSafeRender(): void {
+		try {
+			this.doRender();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			// eslint-disable-next-line no-console
+			console.error(`TUI render error: ${message}`);
+		}
+	}
+
 	requestRender(force = false): void {
 		if (force) {
 			this.resetRenderState();
@@ -756,7 +771,7 @@ export abstract class TuiBase extends Container implements TUI {
 				}
 				this.renderRequested = false;
 				this.lastRenderAt = performance.now();
-				this.doRender();
+				this.runSafeRender();
 			});
 			return;
 		}
@@ -778,7 +793,7 @@ export abstract class TuiBase extends Container implements TUI {
 			}
 			this.renderRequested = false;
 			this.lastRenderAt = performance.now();
-			this.doRender();
+			this.runSafeRender();
 			if (this.renderRequested) {
 				this.scheduleRender();
 			}

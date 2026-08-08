@@ -14,6 +14,7 @@ import { Connection } from "./connection.ts";
 import {
 	PiClientDisposedError,
 	PiDisconnectedError,
+	PiRequestTimeoutError,
 	PiServerError,
 	PiSessionDetachedError,
 	PiSessionOwnershipError,
@@ -46,6 +47,7 @@ interface PendingRequest {
 	command: Command;
 	resolve(result: CommandResult): void;
 	reject(error: Error): void;
+	timeoutId?: NodeJS.Timeout;
 }
 
 export class PiClient {
@@ -62,6 +64,10 @@ export class PiClient {
 	readonly #sessionReconciliations = new Map<string, Promise<void>>();
 	readonly #connectionStateListeners = new Set<(change: ConnectionStateChange) => void>();
 	#requestSequence = 0;
+	#requestTimeoutMs(): number {
+		return this.#options.requestTimeoutMs ?? 60_000;
+	}
+
 	#disposed = false;
 	#disposePromise: Promise<void> | undefined;
 
@@ -192,7 +198,10 @@ export class PiClient {
 		if (!this.connected) return Promise.reject(new PiDisconnectedError());
 		const id = `request-${++this.#requestSequence}`;
 		const { promise, resolve, reject } = createPromiseResolvers<CommandResult>();
-		this.#pendingRequests.set(id, { command, resolve, reject });
+		const timeoutId = setTimeout(() => {
+			this.#takePendingRequest(id)?.reject(new PiRequestTimeoutError(command.command, this.#requestTimeoutMs()));
+		}, this.#requestTimeoutMs());
+		this.#pendingRequests.set(id, { command, resolve, reject, timeoutId });
 		let frame: Uint8Array;
 		try {
 			frame = encodeClientMessage(
@@ -330,14 +339,20 @@ export class PiClient {
 
 	#takePendingRequest(id: string): PendingRequest | undefined {
 		const request = this.#pendingRequests.get(id);
-		if (request) this.#pendingRequests.delete(id);
+		if (request) {
+			this.#pendingRequests.delete(id);
+			if (request.timeoutId) clearTimeout(request.timeoutId);
+		}
 		return request;
 	}
 
 	#rejectPendingRequests(error: Error): void {
 		const requests = [...this.#pendingRequests.values()];
 		this.#pendingRequests.clear();
-		for (const request of requests) request.reject(error);
+		for (const request of requests) {
+			if (request.timeoutId) clearTimeout(request.timeoutId);
+			request.reject(error);
+		}
 	}
 
 	dispose(): Promise<void> {

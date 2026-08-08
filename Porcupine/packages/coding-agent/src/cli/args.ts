@@ -75,67 +75,87 @@ export function parseArgs(args: string[]): Args {
 		diagnostics: [],
 	};
 
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
+	// Pre-pass: expand `--flag=value` into `--flag` + `value` so every known
+	// value flag accepts the = spelling (unknown flags keep the same map
+	// semantics through the generic branch below).
+	const expanded: string[] = [];
+	for (const original of args) {
+		if (original.startsWith("--") && original.includes("=")) {
+			const eq = original.indexOf("=");
+			expanded.push(original.slice(0, eq), original.slice(eq + 1));
+		} else {
+			expanded.push(original);
+		}
+	}
+
+	for (let i = 0; i < expanded.length; i++) {
+		const arg = expanded[i];
 
 		if (arg === "--help" || arg === "-h") {
 			result.help = true;
 		} else if (arg === "--version" || arg === "-v") {
 			result.version = true;
-		} else if (arg === "--mode" && i + 1 < args.length) {
-			const mode = args[++i];
+		} else if (arg === "--mode") {
+			const mode = i + 1 < expanded.length ? expanded[++i] : undefined;
 			if (mode === "text" || mode === "json" || mode === "rpc") {
 				result.mode = mode;
+			} else if (mode === undefined || mode.startsWith("-")) {
+				result.diagnostics.push({ type: "error", message: "--mode requires text, json, or rpc" });
+			} else {
+				result.diagnostics.push({
+					type: "error",
+					message: `Invalid mode "${mode}". Valid values: text, json, rpc`,
+				});
 			}
 		} else if (arg === "--continue" || arg === "-c") {
 			result.continue = true;
 		} else if (arg === "--resume" || arg === "-r") {
 			result.resume = true;
-		} else if (arg === "--provider" && i + 1 < args.length) {
-			result.provider = args[++i];
-		} else if (arg === "--model" && i + 1 < args.length) {
-			result.model = args[++i];
-		} else if (arg === "--api-key" && i + 1 < args.length) {
-			result.apiKey = args[++i];
-		} else if (arg === "--system-prompt" && i + 1 < args.length) {
-			result.systemPrompt = args[++i];
-		} else if (arg === "--append-system-prompt" && i + 1 < args.length) {
+		} else if (arg === "--provider" && i + 1 < expanded.length) {
+			result.provider = expanded[++i];
+		} else if (arg === "--model" && i + 1 < expanded.length) {
+			result.model = expanded[++i];
+		} else if (arg === "--api-key" && i + 1 < expanded.length) {
+			result.apiKey = expanded[++i];
+		} else if (arg === "--system-prompt" && i + 1 < expanded.length) {
+			result.systemPrompt = expanded[++i];
+		} else if (arg === "--append-system-prompt" && i + 1 < expanded.length) {
 			result.appendSystemPrompt = result.appendSystemPrompt ?? [];
-			result.appendSystemPrompt.push(args[++i]);
+			result.appendSystemPrompt.push(expanded[++i]);
 		} else if (arg === "--name" || arg === "-n") {
-			if (i + 1 < args.length) {
-				result.name = args[++i];
+			if (i + 1 < expanded.length) {
+				result.name = expanded[++i];
 			} else {
 				result.diagnostics.push({ type: "error", message: "--name requires a value" });
 			}
 		} else if (arg === "--no-session") {
 			result.noSession = true;
-		} else if (arg === "--session" && i + 1 < args.length) {
-			result.session = args[++i];
-		} else if (arg === "--session-id" && i + 1 < args.length) {
-			result.sessionId = args[++i];
-		} else if (arg === "--fork" && i + 1 < args.length) {
-			result.fork = args[++i];
-		} else if (arg === "--session-dir" && i + 1 < args.length) {
-			result.sessionDir = args[++i];
-		} else if (arg === "--models" && i + 1 < args.length) {
-			result.models = args[++i].split(",").map((s) => s.trim());
+		} else if (arg === "--session" && i + 1 < expanded.length) {
+			result.session = expanded[++i];
+		} else if (arg === "--session-id" && i + 1 < expanded.length) {
+			result.sessionId = expanded[++i];
+		} else if (arg === "--fork" && i + 1 < expanded.length) {
+			result.fork = expanded[++i];
+		} else if (arg === "--session-dir" && i + 1 < expanded.length) {
+			result.sessionDir = expanded[++i];
+		} else if (arg === "--models" && i + 1 < expanded.length) {
+			result.models = expanded[++i].split(",").map((s) => s.trim());
 		} else if (arg === "--no-tools" || arg === "-nt") {
 			result.noTools = true;
 		} else if (arg === "--no-builtin-tools" || arg === "-nbt") {
 			result.noBuiltinTools = true;
-		} else if ((arg === "--tools" || arg === "-t") && i + 1 < args.length) {
-			result.tools = args[++i]
+		} else if ((arg === "--tools" || arg === "-t") && i + 1 < expanded.length) {
+			result.tools = expanded[++i]
 				.split(",")
 				.map((s) => s.trim())
 				.filter((name) => name.length > 0);
-		} else if ((arg === "--exclude-tools" || arg === "-xt") && i + 1 < args.length) {
-			result.excludeTools = args[++i]
+		} else if ((arg === "--exclude-tools" || arg === "-xt") && i + 1 < expanded.length) {
+			result.excludeTools = expanded[++i]
 				.split(",")
 				.map((s) => s.trim())
 				.filter((name) => name.length > 0);
-		} else if (arg === "--thinking" && i + 1 < args.length) {
-			const level = args[++i];
+		} else if (arg === "--thinking" && i + 1 < expanded.length) {
+			const level = expanded[++i];
 			if (isValidThinkingLevel(level)) {
 				result.thinking = level;
 			} else {
@@ -146,7 +166,7 @@ export function parseArgs(args: string[]): Args {
 			}
 		} else if (arg === "--print" || arg === "-p") {
 			result.print = true;
-			const next = args[i + 1];
+			const next = expanded[i + 1];
 			if (next !== undefined && !next.startsWith("@") && (!next.startsWith("-") || next.startsWith("---"))) {
 				result.messages.push(next);
 				i++;
@@ -155,7 +175,7 @@ export function parseArgs(args: string[]): Args {
 			// Headless task mode: run the prompt to completion, print the final
 			// report, exit 0 on success / 1 on error or abort (CI-friendly).
 			result.headless = true;
-			const next = args[i + 1];
+			const next = expanded[i + 1];
 			if (next !== undefined && !next.startsWith("@") && (!next.startsWith("-") || next.startsWith("---"))) {
 				result.messages.push(next);
 				i++;
@@ -163,33 +183,35 @@ export function parseArgs(args: string[]): Args {
 		} else if (arg === "--serve") {
 			// Serve mode: run the agent as a headless HTTP server (see docs/server.md).
 			result.serve = true;
-		} else if (arg === "--port" && i + 1 < args.length) {
-			const port = Number(args[++i]);
+		} else if (arg === "--port" && i + 1 < expanded.length) {
+			const port = Number(expanded[++i]);
 			if (!Number.isInteger(port) || port < 0 || port > 65535) {
-				result.diagnostics.push({ type: "error", message: `Invalid port "${args[i]}". Expected 0-65535.` });
+				result.diagnostics.push({ type: "error", message: `Invalid port "${expanded[i]}". Expected 0-65535.` });
 			} else {
 				result.port = port;
 			}
-		} else if (arg === "--host" && i + 1 < args.length) {
-			result.host = args[++i];
-		} else if (arg === "--token" && i + 1 < args.length) {
-			result.token = args[++i];
-		} else if (arg === "--export" && i + 1 < args.length) {
-			result.export = args[++i];
-		} else if ((arg === "--extension" || arg === "-e") && i + 1 < args.length) {
+		} else if (arg === "--port") {
+			result.diagnostics.push({ type: "error", message: "--port requires a value (0-65535)" });
+		} else if (arg === "--host" && i + 1 < expanded.length) {
+			result.host = expanded[++i];
+		} else if (arg === "--token" && i + 1 < expanded.length) {
+			result.token = expanded[++i];
+		} else if (arg === "--export" && i + 1 < expanded.length) {
+			result.export = expanded[++i];
+		} else if ((arg === "--extension" || arg === "-e") && i + 1 < expanded.length) {
 			result.extensions = result.extensions ?? [];
-			result.extensions.push(args[++i]);
+			result.extensions.push(expanded[++i]);
 		} else if (arg === "--no-extensions" || arg === "-ne") {
 			result.noExtensions = true;
-		} else if (arg === "--skill" && i + 1 < args.length) {
+		} else if (arg === "--skill" && i + 1 < expanded.length) {
 			result.skills = result.skills ?? [];
-			result.skills.push(args[++i]);
-		} else if (arg === "--prompt-template" && i + 1 < args.length) {
+			result.skills.push(expanded[++i]);
+		} else if (arg === "--prompt-template" && i + 1 < expanded.length) {
 			result.promptTemplates = result.promptTemplates ?? [];
-			result.promptTemplates.push(args[++i]);
-		} else if (arg === "--theme" && i + 1 < args.length) {
+			result.promptTemplates.push(expanded[++i]);
+		} else if (arg === "--theme" && i + 1 < expanded.length) {
 			result.themes = result.themes ?? [];
-			result.themes.push(args[++i]);
+			result.themes.push(expanded[++i]);
 		} else if (arg === "--no-skills" || arg === "-ns") {
 			result.noSkills = true;
 		} else if (arg === "--no-prompt-templates" || arg === "-np") {
@@ -200,13 +222,13 @@ export function parseArgs(args: string[]): Args {
 			result.noContextFiles = true;
 		} else if (arg === "--list-models") {
 			// Check if next arg is a search pattern (not a flag or file arg)
-			if (i + 1 < args.length && !args[i + 1].startsWith("-") && !args[i + 1].startsWith("@")) {
-				result.listModels = args[++i];
+			if (i + 1 < expanded.length && !expanded[i + 1].startsWith("-") && !expanded[i + 1].startsWith("@")) {
+				result.listModels = expanded[++i];
 			} else {
 				result.listModels = true;
 			}
 		} else if (arg === "--ui-mode") {
-			const mode = args[i + 1];
+			const mode = expanded[i + 1];
 			if (mode === "regular" || mode === "fullscreen") {
 				result.uiMode = mode;
 				i++;
@@ -237,7 +259,7 @@ export function parseArgs(args: string[]): Args {
 				result.unknownFlags.set(arg.slice(2, eqIndex), arg.slice(eqIndex + 1));
 			} else {
 				const flagName = arg.slice(2);
-				const next = args[i + 1];
+				const next = expanded[i + 1];
 				if (next !== undefined && !next.startsWith("-") && !next.startsWith("@")) {
 					result.unknownFlags.set(flagName, next);
 					i++;

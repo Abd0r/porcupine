@@ -61,6 +61,16 @@ export class Loader extends Text {
 		}
 	}
 
+	/**
+	 * Release the loader for teardown: clear the animation interval and drop the
+	 * reference to the TUI so no further re-renders are requested after disposal.
+	 * Idempotent; safe to call on abnormal exit or overlay hide.
+	 */
+	dispose(): void {
+		this.stop();
+		this.ui = null;
+	}
+
 	setMessage(message: string): void {
 		this.message = message;
 		this.updateDisplay();

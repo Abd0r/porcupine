@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import lockfile from "proper-lockfile";
+import { lockDirSync } from "../core/sync-lock.ts";
 
 export type LiteratureStatus = "to-read" | "reading" | "reviewed" | "incorporated";
 export type LiteratureGrade = "A" | "B" | "C" | "D";
@@ -108,10 +108,9 @@ export class LiteratureStore {
 		const filePath = storePath(this.agentDir);
 		const directory = dirname(filePath);
 		mkdirSync(directory, { recursive: true });
-		const release = lockfile.lockSync(directory, {
+		const release = lockDirSync(directory, {
 			lockfilePath: join(directory, ".literature.lock"),
 			realpath: false,
-			retries: { retries: 0 },
 			stale: 30_000,
 		});
 		try {

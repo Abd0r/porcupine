@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { setKittyProtocolActive } from "./keys.ts";
 import { isNativeModifierPressed } from "./native-modifiers.ts";
 import { StdinBuffer } from "./stdin-buffer.ts";
+import { sanitizeTerminalText } from "./terminal-image.ts";
 
 const cjsRequire = createRequire(import.meta.url);
 
@@ -502,8 +503,10 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	setTitle(title: string): void {
-		// OSC 0;title BEL - set terminal window title
-		process.stdout.write(`\x1b]0;${title}\x07`);
+		// OSC 0;title BEL - set terminal window title. Sanitize control bytes so an
+		// untrusted session/extension title cannot break out of the OSC with its own
+		// ESC/BEL/C1 sequence.
+		process.stdout.write(`\x1b]0;${sanitizeTerminalText(title)}\x07`);
 	}
 
 	setProgress(active: boolean): void {

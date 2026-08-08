@@ -88,8 +88,8 @@ export class DiscordBridge {
 	private pendingDiscord: Array<{ channelId: string; text: string }> = [];
 	/** Most recent channel that sent a real prompt; confirmations go there. */
 	private activeChannelId: string | undefined;
-	/** Approve/Deny waiters keyed by confirm request id (stale-proof). */
-	private confirmWaiters = new Map<string, (ok: boolean) => void>();
+	/** Approve/Deny waiters keyed by confirm request id, scoped to their confirmation message id. */
+	private confirmWaiters = new Map<string, { waiter: (ok: boolean) => void; messageId: string | undefined }>();
 	/** ask_question option selections by request id. */
 	private pendingSelects = new Map<string, { options: string[]; resolve: (value: string | undefined) => void }>();
 	/** ask_question free-text answer bound to one channel. */
@@ -180,21 +180,30 @@ export class DiscordBridge {
 		if (channelId === undefined) return undefined;
 		return new Promise<boolean>((resolve) => {
 			const requestId = randomUUID();
-			const waiter = (ok: boolean) => {
-				this.confirmWaiters.delete(requestId);
-				resolve(ok);
+			const entry: { waiter: (ok: boolean) => void; messageId: string | undefined } = {
+				waiter: (ok) => {
+					this.confirmWaiters.delete(requestId);
+					resolve(ok);
+				},
+				messageId: undefined,
 			};
-			this.confirmWaiters.set(requestId, waiter);
+			this.confirmWaiters.set(requestId, entry);
 			const timeout = this.options.confirmTimeoutMs ?? 5 * 60 * 1000;
-			setTimeout(() => waiter(false), timeout);
+			setTimeout(() => entry.waiter(false), timeout);
 			void this.sendText(channelId, `❓ ${title}\n\n${message}\n\nReact ✅ to approve, ❌ to deny.`).then(
 				(messageId) => {
+					try {
+						const current = this.confirmWaiters.get(requestId);
+						if (current) {
+							current.messageId = messageId ?? undefined;
+						}
+					} catch {}
 					if (messageId && this.confirmWaiters.has(requestId)) {
 						void this.addReaction(channelId, messageId, "✅");
 						void this.addReaction(channelId, messageId, "❌");
 					}
 				},
-				() => waiter(false),
+				() => entry.waiter(false),
 			);
 		});
 	}
@@ -502,13 +511,15 @@ export class DiscordBridge {
 			}
 		}
 
-		// Approve/Deny: message id scopes the waiter (stale reaction can't hit a new confirm).
+		// Approve/Deny: message id scopes the waiter (stale reaction on an old
+		// confirmation message can't approve a new/current one).
 		if (emoji === "✅" || emoji === "❌") {
-			for (const [requestId, waiter] of [...this.confirmWaiters.entries()]) {
-				void requestId;
-				waiter(emoji === "✅");
-				this.confirmWaiters.delete(requestId);
-				return;
+			for (const entry of [...this.confirmWaiters.values()]) {
+				// Only react to the exact confirmation message this waiter is bound to.
+				if (entry.messageId !== undefined && entry.messageId !== reaction.message_id) {
+					continue;
+				}
+				entry.waiter(emoji === "✅");
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { Markdown } from "../src/components/markdown.ts";
-import { getCapabilities, hyperlink, resetCapabilitiesCache, setCapabilities } from "../src/terminal-image.ts";
+import { hyperlink, resetCapabilitiesCache, setCapabilities } from "../src/terminal-image.ts";
 import { defaultMarkdownTheme } from "./test-themes.ts";
 
 describe("cbF OSC8 hyperlink injection", () => {

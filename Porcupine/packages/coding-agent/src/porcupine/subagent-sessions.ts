@@ -107,9 +107,10 @@ export async function persistSubagentSession(
 
 		pruneSubagentSessions(opts.sessionDir, opts.retention ?? DEFAULT_SUBAGENT_SESSION_RETENTION);
 		return { sessionId: manager.getSessionId(), path };
-	} catch {
+	} catch (error) {
 		// Best-effort: a failed sub-agent transcript write must never crash the
-		// main session. Failed writes are simply not persisted.
+		// main session, but do not swallow it silently - surface it for diagnosis.
+		console.warn("Failed to persist sub-agent session transcript:", error instanceof Error ? error.message : error);
 		return undefined;
 	}
 }
@@ -242,10 +243,11 @@ export function pruneSubagentSessions(
 	const root = sessionDir ?? getSessionsDir();
 	if (retention <= 0 || !existsSync(root)) return 0;
 
+	// Scope pruning to the CURRENT session directory only. Sessions live in
+	// per-project subdirectories under the sessions root; walking them here would
+	// delete sub-agent transcripts in unrelated projects. Reading only `root`
+	// keeps retention local to the session that just persisted a transcript.
 	const allSubagent: Array<{ path: string; mtime: number }> = [...readSubagentFilesInDir(root)];
-	for (const dir of collectSessionDirs(root)) {
-		allSubagent.push(...readSubagentFilesInDir(dir));
-	}
 	allSubagent.sort((a, b) => b.mtime - a.mtime);
 
 	const removed = Math.max(0, allSubagent.length - retention);
@@ -257,17 +259,6 @@ export function pruneSubagentSessions(
 		}
 	}
 	return removed;
-}
-
-function collectSessionDirs(root: string): string[] {
-	const dirs: string[] = [];
-	if (!existsSync(root)) return dirs;
-	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		if (entry.isDirectory()) {
-			dirs.push(join(root, entry.name));
-		}
-	}
-	return dirs;
 }
 
 function readSubagentFilesInDir(dir: string): Array<{ path: string; mtime: number }> {

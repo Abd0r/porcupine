@@ -8,11 +8,11 @@
  *     crosses maxSteps still executes (onStep runs, then tool.execute runs).
  */
 import { type AssistantMessage, type AssistantMessageEvent, EventStream, type Model } from "@porcupineai/ai";
+import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { Agent } from "../src/agent.ts";
 import { runSubagent } from "../src/porcupine/subagent.ts";
 import type { AgentMessage, AgentTool } from "../src/types.ts";
-import { Type } from "typebox";
 
 class MockAssistantStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	constructor() {
@@ -108,6 +108,7 @@ describe("runSubagent step budget is a hard ceiling", () => {
 		let executed = 0;
 		const tool: AgentTool = {
 			name: "calculate",
+			label: "calculate",
 			description: "calculate",
 			parameters: Type.Object({ value: Type.Number() }),
 			execute: async () => {

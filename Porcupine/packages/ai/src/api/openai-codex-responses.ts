@@ -784,6 +784,11 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 			if (done) break;
 			buffer += decoder.decode(value, { stream: true });
 
+			// Normalize CRLF (and lone CR) to LF so SSE events delimited with
+			// \r\n (allowed by RFC 8896) parse identically to \n\n. This also
+			// makes the trailing\r half of a split\r\n harmless.
+			buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
 			let idx = buffer.indexOf("\n\n");
 			while (idx !== -1) {
 				const chunk = buffer.slice(0, idx);
@@ -807,6 +812,27 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 					}
 				}
 				idx = buffer.indexOf("\n\n");
+			}
+		}
+
+		// Flush any trailing event left in the buffer after the stream ends.
+		if (buffer.trim().length > 0) {
+			const dataLines = buffer
+				.split("\n")
+				.filter((l) => l.startsWith("data:"))
+				.map((l) => l.slice(5).trim());
+			if (dataLines.length > 0) {
+				const data = dataLines.join("\n").trim();
+				if (data && data !== "[DONE]") {
+					try {
+						yield JSON.parse(data) as Record<string, unknown>;
+					} catch (cause) {
+						throw new CodexProtocolError(`Invalid Codex SSE JSON: ${formatThrownValue(cause)}`, {
+							cause,
+							payload: data,
+						});
+					}
+				}
 			}
 		}
 	} finally {
