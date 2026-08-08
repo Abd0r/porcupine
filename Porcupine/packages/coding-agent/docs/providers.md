@@ -87,6 +87,7 @@ porcupine
 | ZAI Coding Plan (Global) | `ZAI_API_KEY` | `zai` |
 | ZAI Coding Plan (China) | `ZAI_CODING_CN_API_KEY` | `zai-coding-cn` |
 | OpenCode Zen | `OPENCODE_API_KEY` | `opencode` |
+| Cline API | `CLINE_API_KEY` | `cline` |
 | OpenCode Go | `OPENCODE_API_KEY` | `opencode-go` |
 | Radius | `RADIUS_API_KEY` | `radius` |
 | Hugging Face | `HF_TOKEN` | `huggingface` |

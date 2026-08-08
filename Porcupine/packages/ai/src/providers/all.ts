@@ -7,6 +7,7 @@ import { antLingProvider } from "./ant-ling.ts";
 import { anthropicProvider } from "./anthropic.ts";
 import { azureOpenAIResponsesProvider } from "./azure-openai-responses.ts";
 import { cerebrasProvider } from "./cerebras.ts";
+import { clineProvider } from "./cline.ts";
 import { cloudflareAIGatewayProvider } from "./cloudflare-ai-gateway.ts";
 import { cloudflareWorkersAIProvider } from "./cloudflare-workers-ai.ts";
 import modelDataManifest from "./data/.manifest.json" with { type: "json" };
@@ -89,6 +90,7 @@ export function builtinProviders(): Provider[] {
 		amazonBedrockProvider(),
 		antLingProvider(),
 		anthropicProvider(),
+		clineProvider(),
 		azureOpenAIResponsesProvider(),
 		cerebrasProvider(),
 		cloudflareAIGatewayProvider(),

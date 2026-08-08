@@ -33,6 +33,7 @@ export type ImagesApi = KnownImagesApi | (string & {});
 
 export type KnownProvider =
 	| "amazon-bedrock"
+	| "cline"
 	| "ant-ling"
 	| "anthropic"
 	| "google"
