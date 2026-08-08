@@ -13,7 +13,7 @@
 
 A terminal coding agent. You describe the goal; it reads your repo, runs commands, edits files, and verifies the result — inside a permission mode you control.
 
-Built on top of [Pi](https://github.com/earendil-works/pi) (MIT), as its own product.
+Built on top of [Pi](https://github.com/earendil-works/pi) (MIT).
 
 ---
 
