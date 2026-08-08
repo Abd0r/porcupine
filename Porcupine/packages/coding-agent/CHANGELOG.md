@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.1.53] - 2026-08-08
+
+### Added
+
+- New **Cline API provider** (`/login cline` or `CLINE_API_KEY`): one free key unlocks Anthropic, OpenAI, Google and more through a single OpenAI-compatible endpoint. Ships with `cline/deepseek/deepseek-v4-flash` (free DeepSeek V4 Flash), `cline/anthropic/claude-sonnet-4-6`, `cline/openai/gpt-4o`, `cline/google/gemini-2.5-pro`, `cline/deepseek/deepseek-chat`, and `cline/minimax/minimax-m2.5`. README documents recommended providers (Cline free, OpenCode Go paid).
+
+### Fixed
+
+- iMessage bridge fails cleanly on modern macOS (AppleScript message access no longer works) with one clear message instead of spamming poll errors; `is from me` replaced with a sender-handle comparison.
+- `/restart` + `/refresh` deep-review fixes: console guard keeps background warnings out of the TUI frame, bridges stop/restart around refresh, restart waits for the child spawn (failed respawns exit non-zero), sub-agent/bash guards block while workers are active, refresh disposes the old SessionManager first, and `.env` is re-applied on restart.
+
+
 ## [0.1.52] - 2026-08-08
 
 ### Fixed
