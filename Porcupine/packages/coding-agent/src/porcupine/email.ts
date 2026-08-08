@@ -72,7 +72,36 @@ export interface EmailClient {
 	connect(): Promise<void>;
 }
 
+/**
+ * Gmail (and some other servers) ignore uid-semantics on FETCH ranges, so
+ * ranges are read as sequence numbers. Map a uid to its sequence position in
+ * the current mailbox via a full search (search order == message order).
+ */
+async function sequenceOfUid(client: ImapFlow, uid: number): Promise<number | undefined> {
+	const uids = (await client.search({ all: true }, { uid: true })) || [];
+	const index = uids.indexOf(uid);
+	return index === -1 ? undefined : index + 1;
+}
+
+/** Map a list of uids to their sequence positions (dropping unknown ones). */
+async function sequencesOfUids(client: ImapFlow, uids: number[]): Promise<number[]> {
+	const all = (await client.search({ all: true }, { uid: true })) || [];
+	const indexOf = new Map<number, number>();
+	for (let i = 0; i < all.length; i++) {
+		indexOf.set(all[i]!, i);
+	}
+	return uids
+		.map((uid) => {
+			const index = indexOf.get(uid);
+			return index === undefined ? undefined : index + 1;
+		})
+		.filter((seq): seq is number => seq !== undefined);
+}
+
 const MAX_SUBJECT_CHARS = 200;
+
+/** How many of the most recent messages a folder listing fetches at most. */
+const LIST_FETCH_LIMIT = 50;
 
 /** Keyring service name under which the mailbox app password is stored. */
 export const EMAIL_KEYRING_SERVICE = "email";
@@ -243,8 +272,13 @@ export function createEmailClient(config: EmailConfig): EmailClient {
 				openImap(async (client: ImapFlow) => {
 					await client.mailboxOpen(path);
 					const uids = (await client.search({ all: true }, { uid: true })) || [];
-					if (uids.length > 0) {
-						for await (const message of client.fetch(uids, { uid: true, envelope: true })) {
+					// Gmail ignores uid-semantics on FETCH ranges (arrays are read as
+					// sequence numbers), so map the newest uids to their sequence
+					// positions and fetch those.
+					const seqStart = Math.max(1, uids.length - LIST_FETCH_LIMIT + 1);
+					const seqs = Array.from({ length: uids.length - seqStart + 1 }, (_v, i) => seqStart + i);
+					if (seqs.length > 0) {
+						for await (const message of client.fetch(seqs, { envelope: true })) {
 							summaries.push(summaryFrom(message));
 						}
 					}
@@ -264,8 +298,18 @@ export function createEmailClient(config: EmailConfig): EmailClient {
 				timeoutMs,
 				"IMAP read",
 				openImap(async (client) => {
-					await client.mailboxOpen("INBOX");
-					const message = await client.fetchOne(String(uid), { uid: true, envelope: true, source: true });
+					// Try INBOX first, then All Mail (archived messages live there).
+					let seq: number | undefined;
+					for (const folder of ["INBOX", "[Gmail]/All Mail"]) {
+						await client.mailboxOpen(folder);
+						seq = await sequenceOfUid(client, uid);
+						if (seq !== undefined) break;
+					}
+					if (seq === undefined) return undefined;
+					let message: FetchMessageObject | undefined;
+					for await (const m of client.fetch([seq], { envelope: true, source: true })) {
+						message = m;
+					}
 					if (!message) return undefined;
 					const envelope = message.envelope;
 					return {
@@ -296,7 +340,9 @@ export function createEmailClient(config: EmailConfig): EmailClient {
 					await client.mailboxOpen("INBOX");
 					const uids = (await client.search({ subject }, { uid: true })) || [];
 					if (uids.length > 0) {
-						for await (const message of client.fetch(uids, { uid: true, envelope: true })) {
+						// Sequence-map the matched uids (Gmail ignores uid FETCH ranges).
+						const seqs = await sequencesOfUids(client, uids);
+						for await (const message of client.fetch(seqs, { envelope: true })) {
 							summaries.push(summaryFrom(message));
 						}
 					}
@@ -356,9 +402,13 @@ export function createEmailClient(config: EmailConfig): EmailClient {
 				"IMAP read draft",
 				openImap(async (client) => {
 					await client.mailboxOpen(config.draftsFolder);
-					const message = await client.fetchOne(String(draftId), { uid: true, source: true });
-					if (!message) return undefined;
-					return Buffer.isBuffer(message.source) ? message.source.toString("utf-8") : undefined;
+					const seq = await sequenceOfUid(client, draftId);
+					if (seq === undefined) return undefined;
+					let source: string | undefined;
+					for await (const message of client.fetch([seq], { source: true })) {
+						source = Buffer.isBuffer(message.source) ? message.source.toString("utf-8") : undefined;
+					}
+					return source;
 				}),
 			);
 			if (source === undefined) throw new Error(`Draft ${draftId} was not found or has no body.`);
