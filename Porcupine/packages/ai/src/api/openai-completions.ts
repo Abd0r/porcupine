@@ -1327,6 +1327,7 @@ function parseChunkUsage(
 	rawUsage: {
 		prompt_tokens?: number;
 		completion_tokens?: number;
+		total_tokens?: number;
 		prompt_cache_hit_tokens?: number;
 		prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
 		completion_tokens_details?: { reasoning_tokens?: number };
@@ -1348,13 +1349,21 @@ function parseChunkUsage(
 	const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
 	// OpenAI completion_tokens already includes reasoning_tokens.
 	const outputTokens = rawUsage.completion_tokens || 0;
+	// Prefer the provider's own total; fall back to the raw prompt+completion
+	// sum. Never recompute from the clamped `input` plus cache again: when a
+	// provider's cache counts are inconsistent with prompt_tokens, the old
+	// formula double-counted cache into the total.
+	const totalTokens =
+		typeof rawUsage.total_tokens === "number"
+			? rawUsage.total_tokens
+			: Math.max(0, promptTokens) + Math.max(0, outputTokens);
 	const usage: AssistantMessage["usage"] = {
 		input,
 		output: outputTokens,
 		cacheRead: cacheReadTokens,
 		cacheWrite: cacheWriteTokens,
 		reasoning: rawUsage.completion_tokens_details?.reasoning_tokens || 0,
-		totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
+		totalTokens,
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
 	calculateCost(model, usage);

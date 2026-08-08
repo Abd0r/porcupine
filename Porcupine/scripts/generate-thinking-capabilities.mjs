@@ -14,6 +14,11 @@ const providersDir = join(outputDir, "providers");
 mkdirSync(providersDir, { recursive: true });
 
 for (const [provider, models] of Object.entries(catalog)) {
+	// Provider ids become filenames: reject anything that could escape the
+	// output dir (path separators, dots, empty).
+	if (!/^[a-zA-Z0-9_-]+$/.test(provider)) {
+		throw new Error(`Unsafe provider id "${provider}": expected [a-zA-Z0-9_-]+`);
+	}
 	const capabilities = Object.fromEntries(
 		Object.entries(models).map(([id, model]) => {
 			const levels = getSupportedThinkingLevels(model);

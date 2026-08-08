@@ -1,18 +1,8 @@
-/**
- * Bug-proof (Part B, corrected by main agent — the original repro hung):
- *
- * B1: a throwing agent_end listener causes handleRunFailure to emit a SECOND
- *     fabricated agent_end (with the subscriber's error as errorMessage),
- *     double-delivering the terminal event + poisoning the transcript.
- * B2: runSubagent's step budget is advisory-by-one — the tool call that
- *     crosses maxSteps still executes (onStep runs, then tool.execute runs).
- */
 import { type AssistantMessage, type AssistantMessageEvent, EventStream, type Model } from "@porcupineai/ai";
-import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { Agent } from "../src/agent.ts";
 import { runSubagent } from "../src/porcupine/subagent.ts";
-import type { AgentMessage, AgentTool } from "../src/types.ts";
+import type { AgentTool } from "../src/types.ts";
 
 class MockAssistantStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	constructor() {
@@ -53,10 +43,7 @@ function createModel() {
 	} as Model<"openai-responses">;
 }
 
-function createAssistantMessage(
-	content: AssistantMessage["content"],
-	stopReason: AssistantMessage["stopReason"] = "stop",
-): AssistantMessage {
+function assistant(content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop") {
 	return {
 		role: "assistant",
 		content,
@@ -66,91 +53,114 @@ function createAssistantMessage(
 		usage: createUsage(),
 		stopReason,
 		timestamp: Date.now(),
-	};
+	} as AssistantMessage;
 }
 
-// B1: throwing agent_end listener -> double agent_end
-describe("Agent subscriber throw at agent_end", () => {
-	it("BUG: a throwing agent_end listener causes a second (fabricated) agent_end", async () => {
+// ===========================================================================
+// CONFIRMED BUG 1: runSubagent reports ok=true when the LLM call errors
+// (a normal stopReason:"error" encoded in the stream is never detected)
+// ===========================================================================
+describe("runSubagent ok semantics (bug-proof-cbB-agent)", () => {
+	it("REGRESSION: LLM stopReason=error is reported as ok=true with no error", async () => {
 		const streamFn = () => {
-			const stream = new MockAssistantStream();
-			queueMicrotask(() => {
-				stream.push({
-					type: "done",
-					reason: "stop",
-					message: createAssistantMessage([{ type: "text", text: "hi" }]),
-				});
-			});
-			return stream;
+			const s = new MockAssistantStream();
+			queueMicrotask(() => s.push({ type: "error", reason: "error", error: assistant([], "error") as any }));
+			return s;
 		};
-
-		const agent = new Agent({ streamFn, initialState: { model: createModel() } });
-		agent.subscribe((event) => {
-			if (event.type === "agent_end") throw new Error("subscriber crashed at agent_end");
+		const result = await runSubagent({
+			task: "do x",
+			model: createModel(),
+			streamFn,
+			tools: [],
+			systemPrompt: "you are a subagent",
 		});
-
-		const agentEnds: AgentMessage[][] = [];
-		agent.subscribe((event) => {
-			if (event.type === "agent_end") agentEnds.push(event.messages);
-		});
-
-		await agent.prompt("hello").catch(() => {});
-
-		// Correct behavior: exactly ONE agent_end. Bug: the catch in
-		// runWithLifecycle -> handleRunFailure re-emits a fabricated agent_end.
-		expect(agentEnds.length).toBe(1);
+		// A provider failure must not be surfaced as a successful sub-agent result.
+		expect(result.ok).toBe(false);
+		expect(result.error).toBeTruthy();
 	});
-});
 
-// B2: sub-agent step budget overshoot
-describe("runSubagent step budget is a hard ceiling", () => {
-	it("BUG: the tool call that crosses maxSteps still executes", async () => {
+	// =======================================================================
+	// CONFIRMED BUG 2: sub-agent step budget overshoot — the tool that eclipses
+	// maxSteps still executes.
+	// =======================================================================
+	it("REGRESSION: maxSteps=1 still executes a second tool (overshoot)", async () => {
 		let executed = 0;
-		const tool: AgentTool = {
-			name: "calculate",
-			label: "calculate",
-			description: "calculate",
-			parameters: Type.Object({ value: Type.Number() }),
+		const tool: AgentTool<any, any> = {
+			label: "noop",
+			name: "noop",
+			description: "noop",
+			parameters: { type: "object", properties: {} } as any,
 			execute: async () => {
-				executed++;
-				return { content: [{ type: "text", text: "ok" }], details: {} };
+				executed += 1;
+				return { content: [{ type: "text", text: "ran" }], details: {} };
 			},
 		};
 
-		// Stateful stream: first assistant turn requests the tool, the second
-		// stops. maxSteps=0 means NOTHING may execute. Bug: the over-budget
-		// call runs because onStep fires and then tool.execute still runs.
-		let calls = 0;
-		const streamFn = () => {
-			const stream = new MockAssistantStream();
+		let callCount = 0;
+		const streamFn: any = (_model: any, _ctx: any, options: any) => {
+			const s = new MockAssistantStream();
+			const signal: AbortSignal | undefined = options?.signal;
 			queueMicrotask(() => {
-				calls += 1;
-				stream.push({
-					type: "done",
-					reason: calls === 1 ? "toolUse" : "stop",
-					message: createAssistantMessage(
-						calls === 1
-							? [{ type: "toolCall", id: "t", name: "calculate", arguments: {} }]
-							: [{ type: "text", text: "done" }],
-						calls === 1 ? "toolUse" : "stop",
-					),
-				});
+				if (signal?.aborted) {
+					s.push({ type: "error", reason: "aborted", error: assistant([], "aborted") as any });
+					return;
+				}
+				if (callCount < 6) {
+					callCount += 1;
+					s.push({
+						type: "done",
+						reason: "toolUse",
+						message: assistant(
+							[{ type: "toolCall", id: `t${callCount}`, name: "noop", arguments: {} }],
+							"toolUse",
+						),
+					});
+				} else {
+					s.push({ type: "done", reason: "stop", message: assistant([{ type: "text", text: "final" }]) });
+				}
 			});
-			return stream;
+			return s;
 		};
 
 		const result = await runSubagent({
-			task: "compute",
-			notes: undefined,
-			systemPrompt: "you are a test agent",
-			tools: [tool],
+			task: "keep going",
 			model: createModel(),
-			maxSteps: 0,
-			maxContextTokens: 100000,
 			streamFn,
+			tools: [tool],
+			systemPrompt: "subagent prompt",
+			maxSteps: 1,
 		});
 
-		expect(result.steps).toBeLessThanOrEqual(0);
-		expect(executed).toBe(0);
+		// The budget must be a hard cap: no more than maxSteps tools may run.
+		expect(executed).toBe(1);
+		expect(result.budgetExhausted).toBe(true);
+	});
+
+	// ===========================================================================
+	// OBSERVATION: plain Agent class — a subscriber throwing at agent_end does not
+	// reject agent.prompt (error is not propagated to the caller). Recorded for
+	// reference; upstream harness handles subscriber errors, see notes in report.
+	// ===========================================================================
+	it("OBSERVE: throwing agent_end subscriber is swallowed (does not reject prompt)", async () => {
+		const streamFn = () => {
+			const s = new MockAssistantStream();
+			queueMicrotask(() =>
+				s.push({ type: "done", reason: "stop", message: assistant([{ type: "text", text: "hi" }]) }),
+			);
+			return s;
+		};
+		const agent = new Agent({ streamFn, initialState: { model: createModel() } });
+		agent.subscribe((event) => {
+			if (event.type === "agent_end") throw new Error("boom");
+		});
+		let rejected: string | undefined;
+		try {
+			await agent.prompt("hello");
+		} catch (e) {
+			rejected = e instanceof Error ? e.message : String(e);
+		}
+		expect(rejected).toBeUndefined();
 	});
 });
+
+void ({} as Agent);

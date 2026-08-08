@@ -162,16 +162,20 @@ function updateChangelogsForRelease(version) {
 
 function addUnreleasedSection() {
 	const changelogs = getChangelogs();
-	const unreleasedSection = "## [Unreleased]\n\n";
 
 	for (const changelog of changelogs) {
 		const content = readFileSync(changelog, "utf-8");
+		const eol = content.includes("\r\n") ? "\r\n" : "\n";
+		const unreleasedSection = `## [Unreleased]${eol}${eol}`;
 
-		// Insert after "# Changelog\n\n"
-		const updated = content.replace(
-			/^(# Changelog\n\n)/,
-			`$1${unreleasedSection}`
-		);
+		// Insert after "# Changelog" header (EOL-aware: on CRLF files the \n\n
+		// pattern never matched, so the section was silently skipped).
+		const header = eol === "\r\n" ? "# Changelog\r\n\r\n" : "# Changelog\n\n";
+		const updated = content.replace(header, header + unreleasedSection);
+		if (updated === content) {
+			console.log(`  Skipping ${changelog}: no "# Changelog" header found`);
+			continue;
+		}
 		writeFileSync(changelog, updated);
 		console.log(`  Added [Unreleased] to ${changelog}`);
 	}

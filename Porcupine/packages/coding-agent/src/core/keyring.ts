@@ -15,6 +15,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { lockDirSync } from "./sync-lock.ts";
 
 const SECRETS_FILE = ".secrets.json";
 
@@ -50,7 +51,12 @@ export async function keychainGet(service: string, account: string): Promise<str
 	return undefined;
 }
 
-/** Store a secret in the OS keychain (best-effort; false when unavailable). */
+/** Store a secret in the OS keychain (best-effort; false when unavailable).
+ * Note: the macOS `security` CLI has no stdin mode, so the secret briefly
+ * appears in this process's argv (visible via `ps` to the same user during
+ * the ~millisecond call). If that is unacceptable, the 0600 file fallback
+ * (writeSecretsFile) is the alternative; both stores are readable by the
+ * agent only. */
 export async function keychainSet(service: string, account: string, secret: string): Promise<boolean> {
 	try {
 		if (process.platform === "darwin") {
@@ -103,16 +109,26 @@ function readSecretsFile(agentDir: string): SecretsFile {
 function writeSecretsFile(agentDir: string, data: SecretsFile): void {
 	const path = secretsPath(agentDir);
 	mkdirSync(dirname(path), { recursive: true });
-	const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
+	// Serialize the read-modify-write: without a lock, two concurrent writers
+	// lose one secret (last writer wins on the full-file rewrite).
+	const release = lockDirSync(dirname(path), {
+		lockfilePath: join(dirname(path), ".secrets.lock"),
+		realpath: false,
+	});
 	try {
-		writeFileSync(temporary, JSON.stringify(data, null, 2), { encoding: "utf8", mode: 0o600 });
-		renameSync(temporary, path);
-	} finally {
+		const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
 		try {
-			rmSync(temporary, { force: true });
-		} catch {
-			// Best-effort cleanup.
+			writeFileSync(temporary, JSON.stringify(data, null, 2), { encoding: "utf8", mode: 0o600 });
+			renameSync(temporary, path);
+		} finally {
+			try {
+				rmSync(temporary, { force: true });
+			} catch {
+				// Best-effort cleanup.
+			}
 		}
+	} finally {
+		release();
 	}
 }
 

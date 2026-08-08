@@ -3,7 +3,7 @@ import { DEFAULT_SUBAGENT_MAX_STEPS, normalizeContextWindow } from "@porcupineai
 import type { Transport } from "@porcupineai/ai";
 import type { ScrollViewScrollbar } from "@porcupineai/tui";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
@@ -304,7 +304,18 @@ export class FileSettingsStorage implements SettingsStorage {
 				if (!release) {
 					release = this.acquireLockSyncWithRetry(path);
 				}
-				writeFileSync(path, next, "utf-8");
+				// Atomic replace: a crash mid-write must never truncate settings.json.
+				const temporary = join(dir, `.${randomUUID()}.settings.tmp`);
+				try {
+					writeFileSync(temporary, next, "utf-8");
+					renameSync(temporary, path);
+				} finally {
+					try {
+						rmSync(temporary, { force: true });
+					} catch {
+						// Best-effort cleanup.
+					}
+				}
 			}
 		} finally {
 			if (release) {

@@ -346,3 +346,14 @@ Project settings (`.porcupine/settings.json`) override global settings. Nested o
   "compaction": { "enabled": true, "reserveTokens": 8192 }
 }
 ```
+
+### Security note: `$`-prefixed values execute shell commands
+
+Configuration values (e.g. in the credential/`env` fields and model settings)
+can be a literal, an environment variable reference, or — when the value
+starts with `$` — a **shell command whose output becomes the value** (10s
+timeout, output trimmed). This is a trust boundary: any process able to
+write your settings or auth files can execute commands as your user. Keep
+those files user-owned (`~/.porcupine/agent/` permissions) and only put
+commands there that you author yourself.
+

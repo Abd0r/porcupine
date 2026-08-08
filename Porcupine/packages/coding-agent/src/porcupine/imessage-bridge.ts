@@ -282,7 +282,21 @@ export class IMessageBridge {
 	// Polling
 	// ---------------------------------------------------------------------
 
+	private pollInFlight = new Set<string>();
+
 	private async pollChat(chatId: string): Promise<void> {
+		// Never overlap polls for the same chat: AppleScript can be slow, and a
+		// slow fetch would otherwise stack a new poll on every interval tick.
+		if (this.pollInFlight.has(chatId)) return;
+		this.pollInFlight.add(chatId);
+		try {
+			await this.pollChatInner(chatId);
+		} finally {
+			this.pollInFlight.delete(chatId);
+		}
+	}
+
+	private async pollChatInner(chatId: string): Promise<void> {
 		let messages: Array<{ id: string; text: string; fromMe: boolean }>;
 		try {
 			messages = await this.fetchChatMessages(chatId);
