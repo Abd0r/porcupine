@@ -811,12 +811,16 @@ export class PorcupineTaskStore {
 			return run;
 		});
 		// Fan out the run-result notification only AFTER the terminal state is
-		// persisted, and swallow any throw so a failing notifier can never block
-		// (or corrupt) the store's save path. Fire-and-forget on the microtask queue.
+		// persisted (mutate() above already saved), and swallow any throw so a
+		// failing notifier can never block (or corrupt) the store's save path.
+		// Synchronous after save: callers/tests that inspect notifications right
+		// after finishRun resolve still see them.
 		if (notification && this.taskRunResultNotifier) {
-			void Promise.resolve()
-				.then(() => this.taskRunResultNotifier?.(notification!))
-				.catch(() => {});
+			try {
+				this.taskRunResultNotifier(notification);
+			} catch {
+				// A throwing notifier must never break persistence or the caller.
+			}
 		}
 		return run;
 	}
