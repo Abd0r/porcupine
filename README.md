@@ -50,6 +50,34 @@ Then, in the TUI:
 
 Try: *"Summarize this repository and tell me how to run its checks."*
 
+## Recommended providers
+
+Two ways to run Porcupine, both set up in under a minute with `/login`.
+
+### Cline API (free) — best for testing
+
+Free tier, no OAuth, no billing. One key unlocks DeepSeek V4 Flash and more.
+
+```text
+1. Create a free account + API key at app.cline.bot (Settings > API Keys)
+2. /login cline
+3. Paste your key
+4. /model → cline/deepseek/deepseek-v4-flash   (free, reasoning-capable)
+```
+
+### OpenCode Go (paid) — the flagship model
+
+Subscription key for the best coding performance (DeepSeek V4 Flash / V4 Pro).
+
+```text
+1. Get an API key at opencode.ai/auth
+2. /login opencode-go
+3. Paste your key
+4. /model → opencode-go/deepseek-v4-flash:high
+```
+
+You can switch providers any time with `/model`; bring your own key, no lock-in.
+
 ## Interaction modes
 
 | Mode | Behavior |
