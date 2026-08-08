@@ -20,6 +20,7 @@ describe("cline provider", () => {
 		expect(ids).toContain("openai/gpt-4o");
 		expect(ids).toContain("google/gemini-2.5-pro");
 		expect(ids).toContain("deepseek/deepseek-chat");
+		expect(ids).toContain("deepseek/deepseek-v4-flash");
 		expect(ids).toContain("minimax/minimax-m2.5");
 	});
 

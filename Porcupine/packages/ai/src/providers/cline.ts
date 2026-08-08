@@ -108,6 +108,13 @@ export const CLINE_MODELS: Model<"openai-completions">[] = [
 		contextWindow: 64000,
 		maxTokens: 8192,
 	}),
+	clineModel("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash (Cline, free)", {
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 256000,
+		maxTokens: 64000,
+	}),
 	clineModel("minimax/minimax-m2.5", "MiniMax M2.5 (Cline)", {
 		input: ["text", "image"],
 		cost: { input: 0.6, output: 3, cacheRead: 0.2, cacheWrite: 0 },
