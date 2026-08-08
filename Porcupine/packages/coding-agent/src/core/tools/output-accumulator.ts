@@ -2,12 +2,15 @@ import { randomBytes } from "node:crypto";
 import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripAnsi } from "../../utils/ansi.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type TruncationResult, truncateTail } from "./truncate.ts";
 
 export interface OutputAccumulatorOptions {
 	maxLines?: number;
 	maxBytes?: number;
 	tempFilePrefix?: string;
+	/** Strip ANSI/control escape sequences from decoded text (defense against terminal injection). */
+	stripAnsi?: boolean;
 }
 
 export interface OutputSnapshot {
@@ -37,6 +40,7 @@ export class OutputAccumulator {
 	private readonly maxBytes: number;
 	private readonly maxRollingBytes: number;
 	private readonly tempFilePrefix: string;
+	private readonly stripAnsiEnabled: boolean;
 	private readonly decoder = new TextDecoder();
 
 	private rawChunks: Buffer[] = [];
@@ -59,6 +63,7 @@ export class OutputAccumulator {
 		this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
 		this.tempFilePrefix = options.tempFilePrefix ?? "pi-output";
+		this.stripAnsiEnabled = options.stripAnsi ?? false;
 	}
 
 	append(data: Buffer): void {
@@ -145,7 +150,11 @@ export class OutputAccumulator {
 		return this.currentLineBytes;
 	}
 
-	private appendDecodedText(text: string): void {
+	private appendDecodedText(raw: string): void {
+		if (raw.length === 0) {
+			return;
+		}
+		const text = this.stripAnsiEnabled ? stripAnsi(raw) : raw;
 		if (text.length === 0) {
 			return;
 		}

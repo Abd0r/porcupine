@@ -184,6 +184,8 @@ export interface Settings {
 	uiMode?: UiMode; // default: "regular"
 	fullscreenScrollbar?: ScrollViewScrollbar; // default: "auto"; no effect in regular UI mode
 	notifyOnTaskCompletion?: boolean; // default: true - notify chat bridges when a task run completes or fails
+	/** Safety policy: paths the agent may never delete/mutate destructively, even inside the workspace. */
+	safety?: { protectedPaths?: string[] };
 }
 
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
@@ -1244,6 +1246,15 @@ export class SettingsManager {
 
 	getNotifyOnTaskCompletion(): boolean {
 		return this.settings.notifyOnTaskCompletion ?? true;
+	}
+
+	/** Paths the agent may never destructively target, even inside the workspace. */
+	getProtectedPaths(): string[] {
+		const defaults = ["/", "/etc", "/usr", "/bin", "/sbin", "/var", "/Library", "/System", "/Applications"];
+		const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+		if (home) defaults.push(join(home, "Library"));
+		const user = this.settings.safety?.protectedPaths ?? [];
+		return [...new Set([...defaults, ...user])];
 	}
 
 	setNotifyOnTaskCompletion(enabled: boolean): void {

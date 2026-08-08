@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Recursive-delete safety refined: `rm -rf` intent is inferred from scope. Inside the workspace (the session project) recursive deletes run freely in Auto/Normal; outside the workspace they stay flagged; protected paths (root, system dirs, plus the new `safety.protectedPaths` setting) are hardline-blocked in every mode, and deleting the working directory itself is always blocked. Path equivalences and write-then-execute script content are covered by the same detector.
+
+
 ## [0.1.53] - 2026-08-08
 
 ### Added

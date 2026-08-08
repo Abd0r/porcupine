@@ -17,6 +17,7 @@
  * The server stays alive until SIGINT/SIGTERM, then shuts down the runtime.
  */
 
+import { randomUUID } from "node:crypto";
 import { VERSION } from "../config.ts";
 import type { AgentSession } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
@@ -34,8 +35,18 @@ export interface ServeModeOptions {
  * Exported separately so tests can drive the API against a real session
  * without running the blocking server loop.
  */
+
+/** True when the serve host is a loopback destination; an empty host means loopback-default. */
+export function isLoopbackHost(host: string | undefined): boolean {
+	if (!host) return true;
+	const h = host
+		.trim()
+		.toLowerCase()
+		.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+	return h === "localhost" || h === "::1" || h === "::" || h === "127.0.0.1" || /^127\./.test(h);
+}
+
 export function adaptSessionToServeApi(session: AgentSession): ServeApiSession {
-	let permissionSeq = 0;
 	return {
 		id: session.sessionId,
 		sendUserMessage: async (text) => {
@@ -49,7 +60,9 @@ export function adaptSessionToServeApi(session: AgentSession): ServeApiSession {
 		onConfirm: (handler) => {
 			session.setConfirmCallback(async (title, message) => {
 				return new Promise<boolean>((resolve) => {
-					const id = `perm-${Date.now()}-${++permissionSeq}`;
+					// Unguessable permission nonce: never expose a predictable,
+					// timestamp+sequence id a caller could guess and approve.
+					const id = `perm-${randomUUID()}`;
 					handler({ id, title, message }, (allow) => resolve(allow));
 				});
 			});
@@ -63,7 +76,7 @@ export function adaptSessionToServeApi(session: AgentSession): ServeApiSession {
  * interrupted (SIGINT/SIGTERM) or the server errors.
  */
 export async function runServeMode(runtime: AgentSessionRuntime, options: ServeModeOptions): Promise<number> {
-	if ((options.host === "0.0.0.0" || options.host === "::") && !options.token) {
+	if (!isLoopbackHost(options.host) && !options.token) {
 		process.stderr.write(
 			"Refusing to bind a non-loopback host without a token. Pass --token or set PORCUPINE_SERVER_TOKEN.\n",
 		);

@@ -133,3 +133,14 @@ export {
 	type ToolStackPlacement,
 	toolCapabilityPath,
 } from "./stacks.ts";
+export {
+	DEFAULT_SUBAGENT_SESSION_RETENTION,
+	listSubagentSessions,
+	MAX_SUBAGENT_TRANSCRIPT_BYTES,
+	type PersistedSubagentSession,
+	type PersistSubagentSessionOptions,
+	persistSubagentSession,
+	pruneSubagentSessions,
+	type SubagentSessionResult,
+	type SubagentSessionSummary,
+} from "./subagent-sessions.ts";

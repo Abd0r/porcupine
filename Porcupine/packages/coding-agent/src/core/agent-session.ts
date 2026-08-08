@@ -56,6 +56,7 @@ import {
 	classifyAdaptiveReasoning,
 } from "../porcupine/adaptive-reasoning.ts";
 import { guardBashCommand } from "../porcupine/auto-mode.ts";
+import { persistSubagentSession } from "../porcupine/subagent-sessions.ts";
 import { createComposedToolDefinition, listToolPolicies } from "../porcupine/tool-policy.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { resolvePath } from "../utils/paths.ts";
@@ -543,6 +544,9 @@ export class AgentSession {
 	}
 
 	private async _injectSubagentReport(id: string, result: SubagentResult): Promise<void> {
+		// Persist the sub-agent run as a recallable sub-agent session file
+		// (best-effort; it never throws). Runs with no transcript are skipped.
+		void this._persistSubagentRun(id, result);
 		try {
 			const status = result.ok
 				? "✓ done"
@@ -581,6 +585,35 @@ export class AgentSession {
 			);
 		} catch {
 			// The session may have been disposed (restart); the report is best-effort.
+		}
+	}
+
+	/**
+	 * Persist a completed sub-agent run (ok, budget-exhausted, cancelled, or
+	 * failed) as a recallable sub-agent session file. Best-effort: failures are
+	 * swallowed so they never affect the running session.
+	 */
+	private async _persistSubagentRun(id: string, result: SubagentResult): Promise<void> {
+		try {
+			await persistSubagentSession({
+				cwd: this._cwd,
+				sessionDir: this.sessionManager.getSessionDir(),
+				parentSessionId: this.sessionManager.getSessionId(),
+				subagentId: id,
+				task: result.summary || "(sub-agent run)",
+				result: {
+					messages: result.messages ?? [],
+					ok: result.ok,
+					steps: result.steps,
+					budgetExhausted: result.budgetExhausted ?? false,
+					cancelled: result.cancelled,
+					summary: result.summary,
+					usage: result.usage,
+					error: result.error,
+				},
+			});
+		} catch {
+			// Best-effort persistence; never break the main session.
 		}
 	}
 
@@ -3227,6 +3260,8 @@ export class AgentSession {
 				modelRuntime: this._modelRuntime,
 				model: this.model,
 				confirm: this._confirmCallback,
+				cwd: this._cwd,
+				protectedPaths: this.settingsManager.getProtectedPaths(),
 			});
 
 		// File mutations confirm only in Ask mode; without a human to ask, they

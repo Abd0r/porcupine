@@ -5,6 +5,7 @@ import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } 
 import { type Static, Type } from "typebox";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import { recordWrittenPath } from "../../porcupine/written-files.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import {
 	applyEditsToNormalizedContent,
@@ -370,6 +371,9 @@ export function createEditToolDefinition(
 				const finalContent = bom + restoreLineEndings(newContent, originalEnding);
 				await ops.writeFile(absolutePath, finalContent);
 				throwIfAborted();
+
+				// Track the path so the bash gate re-scans it if the agent executes it.
+				recordWrittenPath(absolutePath);
 
 				const diffResult = generateDiffString(baseContent, newContent);
 				const patch = generateUnifiedPatch(path, baseContent, newContent);

@@ -8,9 +8,12 @@
  * Distinct from unconditional YOLO: Auto Mode still evaluates risk.
  */
 
+import { readFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import type { Model } from "@porcupineai/ai";
 import type { ModelRuntime } from "../core/model-runtime.ts";
 import { classifyWithSessionModel } from "./llm-classify.ts";
+import { findExecutedWrittenScript } from "./written-files.ts";
 
 export type AutoVerdict = "approve" | "deny";
 
@@ -117,6 +120,40 @@ function stripShellComments(command: string): string {
 		.join("\n");
 }
 
+/**
+ * Normalize a command before dangerous-command matching so that shell / POSIX
+ * path-equivalences of destructive roots are caught by the same hardline rules.
+ * The shell collapses `//`, `/./`, `/../` (and any depth of `..` beyond root) to
+ * `/`; quotes are stripped by the shell; and `--` is an option terminator that
+ * does not change the target. We mirror that collapse here so `rm -rf //`,
+ * `rm -rf /./`, `rm -rf -- /`, and quoted roots all hardline the same as the
+ * canonical `rm -rf /`. Only used for detection; the raw command is still shown
+ * to the user and passed to the classifier.
+ */
+function normalizeForDangerScan(command: string): string {
+	let t = command.trim();
+	// Collapse a fully-quoted command (e.g. '"rm -rf /"').
+	if (t.length >= 2 && ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'")))) {
+		t = t.slice(1, -1);
+	}
+	for (let i = 0; i < 4; i++) {
+		const before = t;
+		// Unquote bare /-anchored path tokens (`"//"` -> `//`, `"/"` -> `/`).
+		t = t.replace(/(["'])(\/[^"'\s]*)\1/g, "$2");
+		// Drop a `--` option terminator right after an rm/kill flag set.
+		t = t.replace(/\b(rm|kill)(\s+-[a-zA-Z]+)*\s+--\s+/gi, (m) => m.replace(/\s+--\s+/, " "));
+		// Collapse repeated slashes.
+		t = t.replace(/\/{2,}/g, "/");
+		// Resolve `/./` and `/../` (and deeper `..` climbs) as the shell does.
+		t = t.replace(/\/(?:\.\/)+/g, "/");
+		t = t.replace(/\/(?:\.\.\/)+/g, "/");
+		// Trailing `/..`, `/./` and lone dots anchored at a path boundary.
+		t = t.replace(/\/(?:\.\.?)(?=[\s;|&]|$)/g, "/");
+		if (t === before && i > 0) break;
+	}
+	return t;
+}
+
 const HARDLINE: Array<{ re: RegExp; key: string; description: string }> = [
 	// Deletion of the filesystem root. Bracket the root with a boundary that is
 	// `/` followed by end-of-input, whitespace, `--`, or `*` (bash `/*`). This
@@ -155,6 +192,19 @@ const HARDLINE: Array<{ re: RegExp; key: string; description: string }> = [
 		re: /\bkill\s+(-9\s+)?-1\b/,
 		key: "kill-all",
 		description: "kill all processes",
+	},
+	{
+		// `kill -- -1` / `kill -9 -- -1`: the `--` long-form option terminator is
+		// equivalent to the plain `-1` target and kills all reachable processes.
+		re: /\bkill\s+(-9\s+)?--\s+-1\b/,
+		key: "kill-all",
+		description: "kill all processes",
+	},
+	{
+		// SysV runlevel 0 (halt/poweroff): `init 0` / `telinit 0`.
+		re: /\b(?:init|telinit)\s+0\b/,
+		key: "sysv-poweroff",
+		description: "system power control (sysv runlevel 0)",
 	},
 ];
 
@@ -213,7 +263,7 @@ const DANGEROUS: Array<{ re: RegExp; key: string; description: string }> = [
 	},
 ];
 
-export function detectDangerousCommand(command: string): DangerousMatch | null {
+export function detectDangerousCommandRaw(command: string): DangerousMatch | null {
 	const text = command ?? "";
 	for (const rule of HARDLINE) {
 		if (rule.re.test(text)) {
@@ -234,6 +284,18 @@ export function detectDangerousCommand(command: string): DangerousMatch | null {
 		}
 	}
 	return null;
+}
+
+/** Detect dangerous commands, canonicalizing shell path-equivalences before matching. */
+export function detectDangerousCommand(command: string): DangerousMatch | null {
+	const c = command ?? "";
+	const raw = detectDangerousCommandRaw(c);
+	if (raw?.hardline) return raw;
+	// A normalized path-equivalence may reveal a hardline the raw form missed
+	// (e.g. `rm -rf //` soft-matches rm-rf, but `/` is a hardline root wipe).
+	const normalized = detectDangerousCommandRaw(normalizeForDangerScan(c));
+	if (normalized?.hardline) return normalized;
+	return raw ?? normalized;
 }
 
 const AUTO_SYSTEM = `You are a safety gate for Porcupine Auto Mode: no human is present to review this command, so your verdict is final.
@@ -278,6 +340,53 @@ Respond with exactly one word: APPROVE or DENY`;
 
 export type BashGuardMode = "ask" | "normal" | "auto";
 
+/** Extract the target paths of an `rm -rf`-family command (best effort). */
+function extractRmTargets(command: string): string[] {
+	const match = /^\s*rm\s+(?:-[a-zA-Z]*[rf][a-zA-Z]*\s+)+(?:--\s+)?(.+)$/.exec(command);
+	if (!match) return [];
+	return match[1]
+		.split(/\s+/)
+		.filter(Boolean)
+		.map((token) => token.replace(/^(["'])|(["'])$/g, ""))
+		.filter((token) => token !== "--" && !(token.startsWith("-") && token.length > 1));
+}
+
+/** Expand a leading `~` or `$HOME` in a shell path token. */
+function expandHome(token: string): string {
+	const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+	if (token === "~" || token.startsWith("~/")) {
+		return home ? (token === "~" ? home : join(home, token.slice(2))) : token;
+	}
+	if (token === "$HOME" || token.startsWith("$HOME/")) {
+		return home ? (token === "$HOME" ? home : join(home, token.slice(6))) : token;
+	}
+	return token;
+}
+
+/**
+ * Infer the scope of a recursive delete: protected paths (hardline), inside the
+ * workspace (agent's own domain), or outside (flagged). Returns null when the
+ * command is not a scoped rm -rf or no cwd is available.
+ */
+export function analyzeRmScope(
+	command: string,
+	cwd: string,
+	protectedPaths: string[],
+): { protected?: string; insideWorkspace: boolean } | null {
+	const targets = extractRmTargets(command);
+	if (targets.length === 0) return null;
+	const resolved = targets.map((target) => resolve(cwd, expandHome(target)));
+	for (const path of resolved) {
+		if (path === cwd) {
+			// `rm -rf .` would delete the working directory itself.
+			return { protected: "the working directory itself", insideWorkspace: false };
+		}
+		const hit = protectedPaths.find((pp) => path === pp || path.startsWith(pp + sep));
+		if (hit) return { protected: hit, insideWorkspace: false };
+	}
+	return { insideWorkspace: resolved.every((path) => path.startsWith(cwd + sep)) };
+}
+
 export async function guardBashCommand(options: {
 	command: string;
 	/** Canonical interaction mode (preferred). */
@@ -291,17 +400,78 @@ export async function guardBashCommand(options: {
 	model: Model<any> | undefined;
 	/** Interactive confirm (Ask for all cmds; Normal for flagged). */
 	confirm?: (title: string, message: string) => Promise<boolean>;
+	/** Working directory used to locate written scripts that the command executes. */
+	cwd?: string;
+	/** Paths the agent may never destructively target (protected-path policy). */
+	protectedPaths?: string[];
 }): Promise<BashGuardDecision> {
 	const mode: BashGuardMode =
 		options.mode ?? (options.sessionKey && isSessionAutoEnabled(options.sessionKey) ? "auto" : "normal");
 
 	const match = detectDangerousCommand(options.command);
 
+	// Write-then-execute: if the command executes a file the agent recently
+	// wrote/edited, scan that file's CONTENT with the same detector. In Auto this
+	// is an unconditional hardline block (no LLM approval); in Normal/Ask it
+	// routes through the normal confirmation path.
+	let scriptPath: string | null = null;
+	if (options.cwd) {
+		const target = findExecutedWrittenScript(options.command, options.cwd);
+		if (target) {
+			try {
+				const content = readFileSync(target, "utf8");
+				if (detectDangerousCommand(content)) {
+					scriptPath = target;
+				}
+			} catch {
+				// Unreadable/deleted file: nothing to scan, fall through to normal gating.
+			}
+		}
+	}
+	if (scriptPath) {
+		if (mode === "auto") {
+			return {
+				approved: false,
+				via: "hardline",
+				message: `BLOCKED (hardline): executing recently-written file ${scriptPath} runs a dangerous script. This cannot be auto-approved.`,
+			};
+		}
+		const label = `Recently-written script ${scriptPath} contains a dangerous command.\n\n`;
+		const prompt = `${label}${options.command}\n\nExecuting it would run a hazardous action. Allow?`;
+		if (options.confirm) {
+			const ok = await options.confirm("Executing recently-written script", prompt);
+			return ok
+				? { approved: true, via: "manual" }
+				: { approved: false, via: "manual", message: `User denied executing ${scriptPath}.` };
+		}
+		return {
+			approved: false,
+			via: "error",
+			message: `BLOCKED: executing ${scriptPath} runs a dangerous script. Switch to Auto or run interactively to confirm.`,
+		};
+	}
+
 	if (match?.hardline) {
 		return {
 			approved: false,
 			via: "hardline",
 			message: `BLOCKED (hardline): ${match.description}. This command cannot be auto-approved.`,
+		};
+	}
+
+	// Workspace-scope refinement for recursive deletes: intent is inferred from
+	// scope. rm -rf of protected paths is hardline (never legit); rm -rf INSIDE
+	// the session workspace is the agent's own domain (safe); outside the
+	// workspace it stays flagged.
+	const rmScope =
+		match && match.patternKey === "rm-rf" && options.cwd
+			? analyzeRmScope(options.command, options.cwd, options.protectedPaths ?? [])
+			: null;
+	if (rmScope?.protected) {
+		return {
+			approved: false,
+			via: "hardline",
+			message: `BLOCKED (hardline): rm target ${rmScope.protected} is a protected path. This cannot be auto-approved.`,
 		};
 	}
 
@@ -327,6 +497,12 @@ export async function guardBashCommand(options: {
 
 	if (!match) {
 		return { approved: true, via: "safe" };
+	}
+
+	// Within the workspace, recursive deletes are the agent's own domain
+	// (build artifacts, node_modules, dist). No classifier or confirm needed.
+	if (rmScope?.insideWorkspace) {
+		return { approved: true, via: "safe", message: "rm -rf within the workspace: allowed" };
 	}
 
 	if (mode === "auto") {

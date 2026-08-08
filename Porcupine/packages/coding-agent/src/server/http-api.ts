@@ -12,6 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { stripAnsi } from "../utils/ansi.ts";
 
 /** Minimal session surface the HTTP API drives. */
 export interface ServeApiSession {
@@ -107,10 +108,38 @@ export function createServeApi(options: ServeApiOptions): ServeApiHandle {
 		return header === `Bearer ${token}`;
 	};
 
+	/**
+	 * Origin/CSRF guard: the server is plain HTTP bound to a loopback host. A
+	 * state-changing cross-origin call (token theft via a malicious browser page,
+	 * DNS rebinding) must be rejected. We allow requests with no Origin header;
+	 * when one is present it must match the server's own origin (scheme://host:port).
+	 */
+	const isOriginAllowed = (req: IncomingMessage, origin: string): boolean => {
+		let originUrl: URL;
+		try {
+			originUrl = new URL(origin);
+		} catch {
+			return false;
+		}
+		if (originUrl.protocol !== "http:") return false;
+		let reqUrl: URL;
+		try {
+			reqUrl = new URL(`http://${req.headers.host ?? "localhost"}`);
+		} catch {
+			return false;
+		}
+		return originUrl.host === reqUrl.host;
+	};
+
 	const server = createServer(async (req, res) => {
 		try {
 			if (!requireAuth(req)) {
 				json(res, 401, { error: "unauthorized" });
+				return;
+			}
+			const origin = req.headers.origin;
+			if (origin !== undefined && !isOriginAllowed(req, origin)) {
+				json(res, 403, { error: "cross-origin request denied" });
 				return;
 			}
 			const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
@@ -229,8 +258,8 @@ export function createServeApi(options: ServeApiOptions): ServeApiHandle {
 		broadcast({
 			type: "permission_request",
 			permissionId: permission.id,
-			title: permission.title,
-			message: permission.message,
+			title: stripAnsi(permission.title),
+			message: stripAnsi(permission.message),
 		});
 		setTimeout(() => {
 			if (permissionResponders.delete(permission.id)) respond(false);

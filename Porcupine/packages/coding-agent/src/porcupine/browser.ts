@@ -22,6 +22,7 @@
  * installed.
  */
 
+import { isAbsolute, resolve, sep } from "node:path";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
 
 /** Launch options for opening a Chromium instance. */
@@ -39,6 +40,7 @@ export class BrowserSession {
 	private browser: Browser | null = null;
 	private context: BrowserContext | null = null;
 	private page: Page | null = null;
+	private readonly cwd: string;
 	private timeoutMs: number;
 
 	/** Current page URL, or null when no page is open. */
@@ -46,8 +48,9 @@ export class BrowserSession {
 	/** Current page title, or null when no page is open. */
 	currentTitleValue: string | null = null;
 
-	constructor(timeoutMs?: number) {
+	constructor(timeoutMs?: number, cwd?: string) {
 		this.timeoutMs = timeoutMs ?? 15_000;
+		this.cwd = cwd ?? process.cwd();
 	}
 
 	/** True once a page has been launched. */
@@ -111,6 +114,10 @@ export class BrowserSession {
 		if (!/^https?:\/\//i.test(target)) {
 			return `Could not navigate: url must start with http:// or https:// (got "${target}")`;
 		}
+		const internalErr = internalHostError(target);
+		if (internalErr) {
+			return `Could not navigate: ${internalErr}`;
+		}
 		try {
 			await this.page.goto(target, { timeout: timeoutMs ?? this.timeoutMs, waitUntil: "load" });
 			return await this.captureState();
@@ -163,9 +170,12 @@ export class BrowserSession {
 		if (!this.page) {
 			return noSessionError("screenshot");
 		}
-		const dest = path ?? defaultScreenshotPath();
+		const dest = path ? resolveWithinCwd(path, this.cwd) : defaultScreenshotPath();
+		if (typeof dest === "string" && dest.startsWith("Could not ")) {
+			return dest;
+		}
 		try {
-			await this.page.screenshot({ path: dest, fullPage: true });
+			await this.page.screenshot({ path: dest as string, fullPage: true });
 			return `Screenshot saved to ${dest}.`;
 		} catch (err) {
 			return `Could not take screenshot: ${errorMessage(err)}`;
@@ -270,6 +280,59 @@ function errorMessage(err: unknown): string {
 		return msg || err.name || "unknown error";
 	}
 	return String(err);
+}
+
+/**
+ * Detect private/reserved/loopback hosts a browser should not be pointed at
+ * (SSRF guard). Returns an error string when blocked, or null when allowed.
+ * Set PORCUPINE_BROWSER_ALLOW_INTERNAL=1 to opt out.
+ */
+function internalHostError(target: string): string | null {
+	if (process.env.PORCUPINE_BROWSER_ALLOW_INTERNAL === "1") return null;
+	let u: URL;
+	try {
+		u = new URL(target);
+	} catch {
+		return `could not parse url "${target}"`;
+	}
+	const host = u.hostname.toLowerCase().replace(/\.$/, "");
+	// Hostnames that resolve to the machine or a LAN.
+	if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) {
+		return `refusing internal host "${host}"`;
+	}
+	// IPv4 literal.
+	const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+	if (ipv4) {
+		const [a, b, c, d] = ipv4.slice(1).map(Number);
+		if ([a, b, c, d].some((n) => n < 0 || n > 255)) return `refusing invalid host "${host}"`;
+		const reserved =
+			a === 0 ||
+			a === 10 ||
+			a === 127 ||
+			(a === 169 && b === 254) ||
+			(a === 172 && b >= 16 && b <= 31) ||
+			(a === 192 && b === 168) ||
+			(a === 100 && b >= 64 && b <= 127);
+		if (reserved) return `refusing internal host "${host}"`;
+	}
+	// IPv6 loopback / unspecified.
+	if (host === "::1" || host === "0:0:0:0:0:0:0:1" || host === "::" || host === "0:0:0:0:0:0:0:0") {
+		return `refusing internal host "${host}"`;
+	}
+	return null;
+}
+
+/** Resolve a screenshot path against the session cwd; reject absolute paths outside it. */
+function resolveWithinCwd(path: string, cwd: string): string {
+	if (isAbsolute(path)) {
+		const root = resolve(cwd);
+		const abs = resolve(path);
+		if (abs !== root && !abs.startsWith(root + sep)) {
+			return `Could not take screenshot: path "${path}" is outside the working directory`;
+		}
+		return abs;
+	}
+	return resolve(cwd, path);
 }
 
 function stringifyResult(value: unknown): string {

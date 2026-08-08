@@ -124,11 +124,13 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Adaptive Reasoning toggle (or use /reasoning adaptive)",
 		argumentHint: "[on|off|status]",
 	},
+	{ name: "stacks", description: "Show tools/skills stack tree or search it", argumentHint: "[query|stack:id]" },
 	{
-		name: "stacks",
-		description: "Show tools/skills stack tree or search it",
-		argumentHint: "[query|stack:id]",
+		name: "subagents",
+		description: "List recent sub-agent sessions, or view one transcript",
+		argumentHint: "[sessionId]",
 	},
+
 	{
 		name: "voice",
 		description: "Voice Mode: push-to-talk with Space (Moonshine STT + Kokoro TTS)",

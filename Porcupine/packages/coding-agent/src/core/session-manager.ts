@@ -36,18 +36,31 @@ import {
 
 export const CURRENT_SESSION_VERSION = 3;
 
+export type SessionType = "session" | "subagent";
+
 export interface SessionHeader {
-	type: "session";
+	type: SessionType;
 	version?: number; // v1 sessions don't have this
 	id: string;
 	timestamp: string;
 	cwd: string;
 	parentSession?: string;
+	/** Sub-agent sessions only: short agent id (e.g. sa-...). */
+	subagentId?: string;
+	/** Sub-agent sessions only: id of the main session that spawned this sub-agent. */
+	parentSessionId?: string;
+	/** Sub-agent sessions only: the task text the sub-agent was asked to complete. */
+	task?: string;
 }
 
 export interface NewSessionOptions {
 	id?: string;
 	parentSession?: string;
+	/** Session kind. Sub-agent sessions are tagged for recall but excluded from /resume. */
+	type?: SessionType;
+	subagentId?: string;
+	parentSessionId?: string;
+	task?: string;
 }
 
 export interface SessionEntryBase {
@@ -181,12 +194,17 @@ export interface SessionContext {
 export interface SessionInfo {
 	path: string;
 	id: string;
+	/** Session kind. "subagent" sessions are excluded from /resume but recallable. */
+	type: SessionType;
 	/** Working directory where the session was started. Empty string for old sessions. */
 	cwd: string;
 	/** User-defined display name from session_info entries. */
 	name?: string;
 	/** Path to the parent session (if this session was forked). */
 	parentSessionPath?: string;
+	subagentId?: string;
+	parentSessionId?: string;
+	task?: string;
 	created: Date;
 	modified: Date;
 	messageCount: number;
@@ -240,21 +258,22 @@ function migrateV1ToV2(entries: FileEntry[]): void {
 	let prevId: string | null = null;
 
 	for (const entry of entries) {
-		if (entry.type === "session") {
+		if (entry.type === "session" || entry.type === "subagent") {
 			entry.version = 2;
 			continue;
 		}
 
-		entry.id = generateId(ids);
-		entry.parentId = prevId;
-		prevId = entry.id;
+		const sessionEntry = entry as SessionEntry;
+		sessionEntry.id = generateId(ids);
+		sessionEntry.parentId = prevId;
+		prevId = sessionEntry.id;
 
 		// Convert firstKeptEntryIndex to firstKeptEntryId for compaction
-		if (entry.type === "compaction") {
-			const comp = entry as CompactionEntry & { firstKeptEntryIndex?: number };
+		if (sessionEntry.type === "compaction") {
+			const comp = sessionEntry as CompactionEntry & { firstKeptEntryIndex?: number };
 			if (typeof comp.firstKeptEntryIndex === "number") {
 				const targetEntry = entries[comp.firstKeptEntryIndex];
-				if (targetEntry && targetEntry.type !== "session") {
+				if (targetEntry && targetEntry.type !== "session" && targetEntry.type !== "subagent") {
 					comp.firstKeptEntryId = targetEntry.id;
 				}
 				delete comp.firstKeptEntryIndex;
@@ -266,7 +285,7 @@ function migrateV1ToV2(entries: FileEntry[]): void {
 /** Migrate v2 → v3: rename hookMessage role to custom. Mutates in place. */
 function migrateV2ToV3(entries: FileEntry[]): void {
 	for (const entry of entries) {
-		if (entry.type === "session") {
+		if (entry.type === "session" || entry.type === "subagent") {
 			entry.version = 3;
 			continue;
 		}
@@ -286,7 +305,7 @@ function migrateV2ToV3(entries: FileEntry[]): void {
  * Mutates entries in place. Returns true if any migration was applied.
  */
 function migrateToCurrentVersion(entries: FileEntry[]): boolean {
-	const header = entries.find((e) => e.type === "session") as SessionHeader | undefined;
+	const header = entries.find((e) => e.type === "session" || e.type === "subagent") as SessionHeader | undefined;
 	const version = header?.version ?? 1;
 
 	if (version >= CURRENT_SESSION_VERSION) return false;
@@ -555,7 +574,10 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 	// Validate session header
 	if (entries.length === 0) return entries;
 	const header = entries[0];
-	if (header.type !== "session" || typeof (header as { id?: unknown }).id !== "string") {
+	if (
+		(header.type !== "session" && header.type !== "subagent") ||
+		typeof (header as { id?: unknown }).id !== "string"
+	) {
 		return [];
 	}
 
@@ -571,7 +593,8 @@ function parseSessionHeaderCandidate(line: string): SessionHeader | null | undef
 	if (!line.trim()) return undefined;
 	const entry = parseSessionEntryLine(line);
 	if (!entry) return undefined;
-	if (entry.type !== "session" || typeof (entry as { id?: unknown }).id !== "string") return null;
+	if ((entry.type !== "session" && entry.type !== "subagent") || typeof (entry as { id?: unknown }).id !== "string")
+		return null;
 	return entry;
 }
 
@@ -650,6 +673,7 @@ export function findMostRecentSession(sessionDir: string, cwd?: string): string 
 			.filter(
 				(file): file is { path: string; header: SessionHeader } =>
 					file.header !== null &&
+					file.header.type !== "subagent" &&
 					(!resolvedCwd || sessionCwdMatches(getSessionHeaderCwd(file.header), resolvedCwd)),
 			)
 			.map(({ path }) => ({ path, mtime: statSync(path).mtime }))
@@ -711,7 +735,7 @@ async function buildSessionInfo(filePath: string): Promise<SessionInfo | null> {
 			if (!entry) continue;
 
 			if (!header) {
-				if (entry.type !== "session") return null;
+				if (entry.type !== "session" && entry.type !== "subagent") return null;
 				header = entry;
 				continue;
 			}
@@ -773,9 +797,13 @@ async function buildSessionInfo(filePath: string): Promise<SessionInfo | null> {
 		return {
 			path: filePath,
 			id: header.id,
+			type: header.type === "subagent" ? "subagent" : "session",
 			cwd,
 			name,
 			parentSessionPath,
+			subagentId: (header as SessionHeader).subagentId,
+			parentSessionId: (header as SessionHeader).parentSessionId,
+			task: (header as SessionHeader).task,
 			created: new Date(header.timestamp),
 			modified,
 			messageCount,
@@ -934,7 +962,9 @@ export class SessionManager {
 				return;
 			}
 
-			const header = this.fileEntries.find((e) => e.type === "session") as SessionHeader | undefined;
+			const header = this.fileEntries.find((e) => e.type === "session" || e.type === "subagent") as
+				| SessionHeader
+				| undefined;
 			this.sessionId = header?.id ?? createSessionId();
 
 			if (migrateToCurrentVersion(this.fileEntries)) {
@@ -957,12 +987,15 @@ export class SessionManager {
 		this.sessionId = options?.id ?? createSessionId();
 		const timestamp = new Date().toISOString();
 		const header: SessionHeader = {
-			type: "session",
+			type: options?.type ?? "session",
 			version: CURRENT_SESSION_VERSION,
 			id: this.sessionId,
 			timestamp,
 			cwd: this.cwd,
 			parentSession: options?.parentSession,
+			subagentId: options?.subagentId,
+			parentSessionId: options?.parentSessionId,
+			task: options?.task,
 		};
 		this.fileEntries = [header];
 		this.byId.clear();
@@ -984,16 +1017,17 @@ export class SessionManager {
 		this.labelTimestampsById.clear();
 		this.leafId = null;
 		for (const entry of this.fileEntries) {
-			if (entry.type === "session") continue;
-			this.byId.set(entry.id, entry);
-			this.leafId = entry.id;
-			if (entry.type === "label") {
-				if (entry.label) {
-					this.labelsById.set(entry.targetId, entry.label);
-					this.labelTimestampsById.set(entry.targetId, entry.timestamp);
+			if (entry.type === "session" || entry.type === "subagent") continue;
+			const typed = entry as SessionEntry;
+			this.byId.set(typed.id, typed);
+			this.leafId = typed.id;
+			if (typed.type === "label") {
+				if (typed.label) {
+					this.labelsById.set(typed.targetId, typed.label);
+					this.labelTimestampsById.set(typed.targetId, typed.timestamp);
 				} else {
-					this.labelsById.delete(entry.targetId);
-					this.labelTimestampsById.delete(entry.targetId);
+					this.labelsById.delete(typed.targetId);
+					this.labelTimestampsById.delete(typed.targetId);
 				}
 			}
 		}
@@ -1336,7 +1370,7 @@ export class SessionManager {
 	 * Get session header.
 	 */
 	getHeader(): SessionHeader | null {
-		const h = this.fileEntries.find((e) => e.type === "session");
+		const h = this.fileEntries.find((e) => e.type === "session" || e.type === "subagent");
 		return h ? (h as SessionHeader) : null;
 	}
 
@@ -1346,7 +1380,7 @@ export class SessionManager {
 	 * change the leaf pointer. Entries cannot be modified or deleted.
 	 */
 	getEntries(): SessionEntry[] {
-		return this.fileEntries.filter((e): e is SessionEntry => e.type !== "session");
+		return this.fileEntries.filter((e): e is SessionEntry => e.type !== "session" && e.type !== "subagent");
 	}
 
 	/**
@@ -1587,7 +1621,7 @@ export class SessionManager {
 				// authoritative for legacy files with very large headers or prefixes.
 				preloadedFileEntries = loadEntriesFromFile(resolvedPath);
 				const firstEntry = preloadedFileEntries[0];
-				header = firstEntry?.type === "session" ? firstEntry : null;
+				header = firstEntry?.type === "session" || firstEntry?.type === "subagent" ? firstEntry : null;
 			}
 		}
 		const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : undefined) ?? process.cwd();
@@ -1636,7 +1670,9 @@ export class SessionManager {
 			throw new Error(`Cannot fork: source session file is empty or invalid: ${resolvedSourcePath}`);
 		}
 
-		const sourceHeader = sourceEntries.find((e) => e.type === "session") as SessionHeader | undefined;
+		const sourceHeader = sourceEntries.find((e) => e.type === "session" || e.type === "subagent") as
+			| SessionHeader
+			| undefined;
 		if (!sourceHeader) {
 			throw new Error(`Cannot fork: source session has no header: ${resolvedSourcePath}`);
 		}
@@ -1668,7 +1704,7 @@ export class SessionManager {
 
 		// Copy all non-header entries from source
 		for (const entry of sourceEntries) {
-			if (entry.type !== "session") {
+			if (entry.type !== "session" && entry.type !== "subagent") {
 				appendFileSync(newSessionFile, `${JSON.stringify(entry)}\n`);
 			}
 		}
@@ -1681,13 +1717,22 @@ export class SessionManager {
 	 * @param cwd Working directory (used to compute default session directory)
 	 * @param sessionDir Optional session directory. If omitted, uses default (~/.porcupine/agent/sessions/<encoded-cwd>/).
 	 * @param onProgress Optional callback for progress updates (loaded, total)
+	 * @param options.includeSubagents When true, include sub-agent-tagged sessions (default false; /resume excludes them).
 	 */
-	static async list(cwd: string, sessionDir?: string, onProgress?: SessionListProgress): Promise<SessionInfo[]> {
+	static async list(
+		cwd: string,
+		sessionDir?: string,
+		onProgress?: SessionListProgress,
+		options?: { includeSubagents?: boolean },
+	): Promise<SessionInfo[]> {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
 		const filterCwd = sessionDir !== undefined && dir !== getDefaultSessionDirPath(cwd);
 		const resolvedCwd = resolvePath(cwd);
+		const includeSubagents = options?.includeSubagents ?? false;
 		const sessions = (await listSessionsFromDir(dir, onProgress)).filter(
-			(session) => !filterCwd || sessionCwdMatches(session.cwd, resolvedCwd),
+			(session) =>
+				(includeSubagents || session.type !== "subagent") &&
+				(!filterCwd || sessionCwdMatches(session.cwd, resolvedCwd)),
 		);
 		sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 		return sessions;
@@ -1697,17 +1742,36 @@ export class SessionManager {
 	 * List all sessions across all project directories.
 	 * @param onProgress Optional callback for progress updates (loaded, total)
 	 */
-	static async listAll(onProgress?: SessionListProgress): Promise<SessionInfo[]>;
-	static async listAll(sessionDir?: string, onProgress?: SessionListProgress): Promise<SessionInfo[]>;
+	static async listAll(
+		onProgress?: SessionListProgress,
+		options?: { includeSubagents?: boolean },
+	): Promise<SessionInfo[]>;
+	static async listAll(
+		sessionDir?: string,
+		onProgress?: SessionListProgress,
+		options?: { includeSubagents?: boolean },
+	): Promise<SessionInfo[]>;
 	static async listAll(
 		sessionDirOrOnProgress?: string | SessionListProgress,
-		onProgress?: SessionListProgress,
+		onProgressOrOptions?: SessionListProgress | { includeSubagents?: boolean },
+		optionsArg?: { includeSubagents?: boolean },
 	): Promise<SessionInfo[]> {
 		const customSessionDir =
 			typeof sessionDirOrOnProgress === "string" ? normalizePath(sessionDirOrOnProgress) : undefined;
-		const progress = typeof sessionDirOrOnProgress === "function" ? sessionDirOrOnProgress : onProgress;
+		const progress =
+			typeof sessionDirOrOnProgress === "function"
+				? sessionDirOrOnProgress
+				: typeof onProgressOrOptions === "function"
+					? onProgressOrOptions
+					: undefined;
+		const includeSubagents =
+			(typeof onProgressOrOptions === "object" && onProgressOrOptions !== null
+				? onProgressOrOptions.includeSubagents
+				: optionsArg?.includeSubagents) ?? false;
 		if (customSessionDir) {
-			const sessions = await listSessionsFromDir(customSessionDir, progress);
+			const sessions = (await listSessionsFromDir(customSessionDir, progress)).filter(
+				(s) => includeSubagents || s.type !== "subagent",
+			);
 			sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 			return sessions;
 		}
@@ -1745,7 +1809,7 @@ export class SessionManager {
 			});
 
 			for (const info of results) {
-				if (info) {
+				if (info && (includeSubagents || info.type !== "subagent")) {
 					sessions.push(info);
 				}
 			}

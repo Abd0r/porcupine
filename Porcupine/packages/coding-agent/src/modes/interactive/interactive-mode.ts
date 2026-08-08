@@ -3755,6 +3755,11 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/subagents" || text.startsWith("/subagents ")) {
+				this.editor.setText("");
+				void this.handleSubagentsCommand(text);
+				return;
+			}
 			if (text === "/x" || text.startsWith("/x ")) {
 				this.handleXCommand(text);
 				this.editor.setText("");
@@ -3942,6 +3947,31 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Text(theme.fg("accent", "Projects"), 1, 0));
 		this.chatContainer.addChild(new Text(output, 1, 0));
 		this.ui.requestRender();
+	}
+
+	/**
+	 * /subagents [sessionId]
+	 * Read-only recall of persisted sub-agent sessions. Without an id, lists the
+	 * most recent runs; with an id, prints that run's transcript summary.
+	 */
+	private async handleSubagentsCommand(text: string): Promise<void> {
+		const arg = text.replace(/^\/subagents\b/i, "").trim();
+		try {
+			const { listSubagentSessions } = await import("../../porcupine/subagent-sessions.ts");
+			const { formatSubagentSessionList, formatSubagentSessionView } = await import(
+				"../../porcupine/subagent-session-format.ts"
+			);
+			const sessionDir = this.sessionManager.getSessionDir();
+			const sessions = await listSubagentSessions(sessionDir);
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new Text(theme.fg("accent", "Sub-agents"), 1, 0));
+			const output = arg ? formatSubagentSessionView(sessions, arg) : formatSubagentSessionList(sessions);
+			this.chatContainer.addChild(new Text(output, 1, 0));
+			this.ui.requestRender();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.showWarning(`/subagents failed: ${message}`);
+		}
 	}
 
 	private handleXCommand(text: string): void {

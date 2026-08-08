@@ -40,6 +40,15 @@ Project trust is only an input-loading guard. It prevents a repository from sile
 
 Interaction modes choose how tool actions are approved, independent of reasoning settings: **Ask** confirms every bash command and file mutation, **Normal** confirms flagged operations, and **Auto** permits safe operations while routing flagged bash through a fail-closed LLM safety gate. In every mode, hardline destructive actions (`rm -rf /`, force-push, credential deletion, etc.) remain blocked. Auto mode is autonomy, not a permission upgrade: it never makes destructive actions unrestricted, and it runs only while an interactive session is open and attended.
 
+### Recursive deletes: intent from scope
+
+`rm -rf` is a legitimate part of real work (cleaning `node_modules`, `dist`, build caches) and the gate infers intent from **scope**, not from mind-reading:
+
+- **Inside the workspace** (the session's project directory): recursive deletes are the agent's own domain and run without friction in Auto and Normal.
+- **Outside the workspace** (home, other repos, system areas): stays flagged — confirmed in Normal, LLM-gated in Auto.
+- **Protected paths**: root, system directories (`/etc`, `/usr`, `/bin`, `/sbin`, `/var`, `/Library`, `/System`, `/Applications`) and anything in the `safety.protectedPaths` setting are hardline-blocked in every mode, even inside the workspace. Deleting the working directory itself (`rm -rf .`) is always blocked.
+- Path equivalences (`rm -rf //`, `rm -rf /./`, `rm -rf -- /`, quoted roots) are normalized before matching, and executing a script the agent just wrote is content-scanned with the same detector (no write-then-execute bypass).
+
 ## MCP (Model Context Protocol) Servers
 
 MCP servers are external tools — treat them as untrusted. Porcupine's MCP client is **fail-closed**: a tool runs only when allowlisted or explicitly approved, hard-line destructive calls are denied in every mode, approvals are bound to a server content-hash (not its name — CVE-2025-54136), and project `mcp.json` servers do not auto-start without project trust. See [MCP](mcp.md) for the full security model.

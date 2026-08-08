@@ -132,7 +132,10 @@ export function createSessionSearchToolDefinition(
 			const tokens = tokenize(args.query ?? "");
 
 			if (args.sessionId) {
-				const sessions = scope === "all" ? await SessionManager.listAll() : await SessionManager.list(cwd);
+				const sessions =
+					scope === "all"
+						? await SessionManager.listAll(undefined, undefined, { includeSubagents: true })
+						: await SessionManager.list(cwd, undefined, undefined, { includeSubagents: true });
 				const hit =
 					sessions.find((s) => s.id === args.sessionId) || sessions.find((s) => s.path.includes(args.sessionId!));
 				if (!hit) {
@@ -158,7 +161,10 @@ export function createSessionSearchToolDefinition(
 				};
 			}
 
-			const sessions = scope === "all" ? await SessionManager.listAll() : await SessionManager.list(cwd);
+			const sessions =
+				scope === "all"
+					? await SessionManager.listAll(undefined, undefined, { includeSubagents: true })
+					: await SessionManager.list(cwd, undefined, undefined, { includeSubagents: true });
 
 			let ranked: SessionInfo[];
 			if (tokens.length === 0) {

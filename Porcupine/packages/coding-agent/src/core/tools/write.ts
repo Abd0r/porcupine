@@ -5,6 +5,7 @@ import { dirname } from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
+import { recordWrittenPath } from "../../porcupine/written-files.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
@@ -236,6 +237,10 @@ export function createWriteToolDefinition(
 				// Write the file contents.
 				await ops.writeFile(absolutePath, content);
 				throwIfAborted();
+
+				// Track the path so the bash gate re-scans it if the agent executes it
+				// (write-then-execute defense).
+				recordWrittenPath(absolutePath);
 
 				return {
 					content: [

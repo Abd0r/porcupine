@@ -38,6 +38,7 @@ function makeSession(overrides: Partial<SessionInfo> & { id: string }): SessionI
 	return {
 		path: overrides.path ?? `/tmp/${overrides.id}.jsonl`,
 		id: overrides.id,
+		type: "session",
 		cwd: overrides.cwd ?? "",
 		name: overrides.name,
 		parentSessionPath: overrides.parentSessionPath,
