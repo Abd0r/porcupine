@@ -115,6 +115,8 @@ import {
 	resolveToolActivity,
 } from "../../porcupine/animations.ts";
 import { getPorcupineBlockWordmark, PORCUPINE_BLOCK_WORDMARK_COLOR } from "../../porcupine/branding.ts";
+import { drainConsoleGuard, installConsoleGuard, uninstallConsoleGuard } from "../../porcupine/console-guard.ts";
+import { loadAgentEnvFile } from "../../porcupine/env-file.ts";
 import {
 	buildGoalContinuation,
 	buildPlanPrompt,
@@ -1133,6 +1135,9 @@ export class InteractiveMode {
 	 */
 	async run(): Promise<void> {
 		await this.init();
+		// Route background bridge/library writes away from the raw stderr frame
+		// while the full-screen TUI is up. Restored in stop().
+		installConsoleGuard();
 		this.startRemoteBridges();
 
 		if (!getProductEnvironment("OFFLINE")) {
@@ -2084,6 +2089,22 @@ export class InteractiveMode {
 			}
 		});
 		this.wireTaskRunResultNotifications();
+	}
+
+	/**
+	 * Tear down every running remote bridge so background WS/heartbeat churn
+	 * cannot corrupt the TUI frame while the runtime is being torn down and
+	 * rebuilt (e.g. during /refresh). No-op when no bridge is running.
+	 */
+	private stopRemoteBridges(): void {
+		this.remoteBridgeUnsubscribe?.();
+		this.remoteBridgeUnsubscribe = undefined;
+		for (const bridge of [this.telegramBridge, this.discordBridge, this.imessageBridge]) {
+			void bridge?.stop().catch(() => {});
+		}
+		this.telegramBridge = undefined;
+		this.discordBridge = undefined;
+		this.imessageBridge = undefined;
 	}
 
 	/**
@@ -6108,6 +6129,25 @@ export class InteractiveMode {
 		return theme.fg("warning", ` · 🆕 v${this.latestVersion} available — /update`);
 	}
 
+	/** Re-check for a newer release after /refresh so the update badge isn't stale. */
+	private recheckUpdateBadge(): void {
+		if (!this.settingsManager.getUpdateCheck()) {
+			return;
+		}
+		// Clear any cached result so /refresh revalidates against the registry.
+		this.latestVersion = undefined;
+		checkForNewPiVersion(this.version, { cacheTtlMs: 0 })
+			.then((newRelease) => {
+				if (newRelease) {
+					this.latestVersion = newRelease.version;
+					this.ui.requestRender();
+				}
+			})
+			.catch(() => {
+				// Best-effort; a stale badge is harmless.
+			});
+	}
+
 	showNewVersionNotification(release: LatestPiRelease): void {
 		const action = theme.fg("accent", `${APP_NAME} update`);
 		const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
@@ -7634,10 +7674,27 @@ export class InteractiveMode {
 			this.showWarning("Wait for compaction to finish before refreshing.");
 			return;
 		}
+		if (this.session.hasActiveSubagents()) {
+			this.showWarning("Cannot /refresh while sub-agents are running.");
+			return;
+		}
+		if (this.session.isBashRunning) {
+			this.showWarning("Cannot /refresh while bash is running.");
+			return;
+		}
+		if (this.extensionSelector) {
+			this.showWarning("Cannot /refresh while a confirmation or selector dialog is open.");
+			return;
+		}
 
 		// Capture live session policy before the runtime is torn down.
 		const ephemeralState = this.session.snapshotEphemeralSessionState();
 		const editorText = this.editor.getText();
+
+		// Background bridges poll / heartbeat over WS; stop them so their
+		// reconnect churn cannot write to the raw stderr frame while the locked
+		// refresh banner is up. They are restarted once the runtime is rebound.
+		this.stopRemoteBridges();
 
 		this.resetExtensionUI();
 
@@ -7678,6 +7735,7 @@ export class InteractiveMode {
 			if (result.cancelled) {
 				dismissRefreshBox(this.editor as Component);
 				refreshBoxDismissed = true;
+				this.startRemoteBridges();
 				this.showStatus("Refresh cancelled");
 				return;
 			}
@@ -7730,12 +7788,22 @@ export class InteractiveMode {
 			);
 			dismissRefreshBox(this.editor as Component);
 			refreshBoxDismissed = true;
+			// Rebind bridges against the fresh runtime now that the rebuild is done
+			// and the banner is cleared. Flush any background warnings that were
+			// buffered by the console guard into the status surface.
+			this.startRemoteBridges();
+			this.recheckUpdateBadge();
+			const buffered = drainConsoleGuard();
+			if (buffered.length > 0) {
+				this.showStatus("Background warnings were buffered during refresh and surfaced here.");
+			}
 		} catch (error) {
 			if (!refreshBoxDismissed) {
 				dismissRefreshBox(previousEditor as Component);
 			} else {
 				this.editorSurfaceLocked = false;
 			}
+			this.startRemoteBridges();
 			this.showError(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
@@ -7751,6 +7819,14 @@ export class InteractiveMode {
 		}
 		if (this.session.isCompacting) {
 			this.showWarning("Wait for compaction to finish before restarting.");
+			return;
+		}
+		if (this.session.hasActiveSubagents()) {
+			this.showWarning("Cannot /restart while sub-agents are running.");
+			return;
+		}
+		if (this.session.isBashRunning) {
+			this.showWarning("Cannot /restart while bash is running.");
 			return;
 		}
 
@@ -7800,19 +7876,39 @@ export class InteractiveMode {
 			// Best-effort dispose.
 		}
 
+		// Re-apply the agent-home .env so a user editing env settings while the
+		// app is running gets them picked up by the replaced process (a fresh
+		// process also re-reads it at startup, but this guarantees the inherited
+		// environment is current rather than frozen from launch).
+		try {
+			loadAgentEnvFile();
+		} catch {
+			// Best-effort env refresh.
+		}
+
 		const child = spawn(process.execPath, [...process.execArgv, ...childArgv], {
 			cwd: this.sessionManager.getCwd(),
 			env: process.env,
 			detached: true,
 			stdio: "inherit",
 		});
-		child.on("error", (err) => {
-			// If spawn fails after TUI stop, write plain stderr and exit non-zero.
-			process.stderr.write(`Restart failed to spawn: ${err instanceof Error ? err.message : String(err)}\n`);
-			process.exit(1);
+
+		// Wait for the detached child to confirm it actually spawned before
+		// exiting 0. A failed spawn is delivered asynchronously via 'error', so
+		// we must wait for it rather than calling process.exit(0) in the same tick
+		// as spawn() (which would make the error branch dead code and silently
+		// report success).
+		const childStarted = new Promise<"spawn" | "error">((resolve) => {
+			child.once("spawn", () => resolve("spawn"));
+			child.once("error", (err) => {
+				process.stderr.write(`Restart failed to spawn: ${err instanceof Error ? err.message : String(err)}\n`);
+				resolve("error");
+			});
 		});
 		child.unref();
-		process.exit(0);
+
+		const outcome = await childStarted;
+		process.exit(outcome === "spawn" ? 0 : 1);
 	}
 
 	private async handleReloadCommand(): Promise<void> {
@@ -8801,5 +8897,8 @@ export class InteractiveMode {
 			this.isInitialized = false;
 		}
 		this.unregisterSignalHandlers();
+		// The TUI is down (or being rebuilt); restore the original console
+		// methods and flush any buffered background warnings as scrollback.
+		uninstallConsoleGuard();
 	}
 }

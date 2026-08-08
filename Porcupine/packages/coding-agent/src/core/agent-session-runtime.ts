@@ -207,9 +207,14 @@ export class AgentSessionRuntime {
 		}
 
 		const previousSessionFile = this.session.sessionFile;
+		// Dispose the old session BEFORE opening the replacement from disk, so any
+		// in-flight/tool writes flushed by abort/dispose are reflected in the file
+		// the new SessionManager reads. Opening first let a late async append land
+		// after the fresh manager had already read the file, resuming a stale or
+		// partial session.
+		await this.teardownCurrent("resume", sessionPath);
 		const sessionManager = SessionManager.open(sessionPath, undefined, options?.cwdOverride);
 		assertSessionCwdExists(sessionManager, this.cwd);
-		await this.teardownCurrent("resume", sessionManager.getSessionFile());
 		this.apply(
 			await this.createRuntime({
 				cwd: sessionManager.getCwd(),
