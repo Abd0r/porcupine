@@ -82,13 +82,22 @@ export type SubagentProgressEvent =
 
 /**
  * Wrap a tool with a step counter. The counter is enforced at the tool-call
- * boundary so a runaway sub-agent can never exceed its budget.
+ * boundary so a runaway sub-agent can never exceed its budget: when the call
+ * would cross maxSteps, the wrapper returns an aborted result BEFORE the
+ * underlying tool executes (checking after onStep was too late — the
+ * over-budget tool still ran).
  */
-function withStepCounter(tool: AgentTool<any>, onStep: (toolName: string, args?: unknown) => void): AgentTool<any> {
+function withStepCounter(tool: AgentTool<any>, onStep: (toolName: string, args?: unknown) => boolean): AgentTool<any> {
 	return {
 		...tool,
 		execute: async (...args: Parameters<AgentTool<any>["execute"]>): Promise<AgentToolResult<any>> => {
-			onStep(tool.name, args[1]);
+			const overBudget = onStep(tool.name, args[1]);
+			if (overBudget) {
+				return {
+					content: [{ type: "text", text: "aborted: step budget exceeded" }],
+					details: {},
+				};
+			}
 			return tool.execute(...args);
 		},
 	};
@@ -149,11 +158,13 @@ export async function runSubagent(options: SubagentOptions): Promise<SubagentRes
 	const toolWrappers = options.tools.map((tool) =>
 		withStepCounter(tool, (toolName, toolArgs) => {
 			steps += 1;
-			if (steps > maxSteps) {
+			const overBudget = steps > maxSteps;
+			if (overBudget) {
 				budgetHit = true;
 				stopRun?.();
 			}
 			options.onProgress?.({ type: "step", step: steps, toolName, args: toolArgs });
+			return overBudget;
 		}),
 	);
 
@@ -222,8 +233,15 @@ export async function runSubagent(options: SubagentOptions): Promise<SubagentRes
 	options.signal?.removeEventListener("abort", onAbort);
 
 	const messages = agent.state.messages;
+	// The StreamFn contract encodes model/API failures as an assistant message
+	// with stopReason "error" (it does not throw), so promptError alone misses
+	// them: without this, a sub-agent whose LLM call failed was reported
+	// ok:true with an empty summary. Surface the last assistant error.
+	const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+	const llmError = lastAssistant?.errorMessage ?? (lastAssistant?.stopReason === "error" ? "model error" : undefined);
+	const failed = budgetHit || aborted || promptError !== undefined || llmError !== undefined;
 	const result: SubagentResult = {
-		ok: !budgetHit && !aborted,
+		ok: !failed,
 		summary: summarize(messages),
 		steps,
 		usage: {
@@ -238,11 +256,13 @@ export async function runSubagent(options: SubagentOptions): Promise<SubagentRes
 			? "sub-agent cancelled"
 			: budgetHit
 				? `sub-agent budget exhausted (${maxSteps} steps, ${maxContextTokens} ctx)`
-				: promptError instanceof Error
-					? promptError.message
-					: promptError !== undefined
-						? String(promptError)
-						: undefined,
+				: llmError !== undefined
+					? `sub-agent failed: ${llmError}`
+					: promptError instanceof Error
+						? promptError.message
+						: promptError !== undefined
+							? String(promptError)
+							: undefined,
 	};
 	options.onProgress?.({ type: "done", result });
 	return result;
