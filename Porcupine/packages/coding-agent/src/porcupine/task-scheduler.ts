@@ -699,7 +699,12 @@ export class PorcupineTaskStore {
 			return { fired, state: hash, exitCode: -1 };
 		}
 		const exitCode = this.runCheckCommand(trigger.command);
-		return { fired: exitCode === trigger.exitCode, state: `${exitCode}`, exitCode };
+		// Fire on the first check (no prior baseline recorded) and whenever the exit
+		// code changed from the last-seen one, but never on a re-run of the same code
+		// — mirroring the file trigger's lastHash change-detection guard.
+		const changed = trigger.lastExitCode === undefined || trigger.lastExitCode !== exitCode;
+		const fired = changed && exitCode === trigger.exitCode;
+		return { fired, state: `${exitCode}`, exitCode };
 	}
 
 	/** Execute the trigger check command with a short timeout, returning its exit code. */
@@ -750,7 +755,8 @@ export class PorcupineTaskStore {
 		status: Extract<PorcupineTaskRunStatus, "completed" | "failed" | "cancelled">,
 		output: { result?: string; error?: string },
 	): PorcupineTaskRun {
-		return this.mutate(() => {
+		let notification: TaskRunResultNotification | undefined;
+		const run = this.mutate(() => {
 			const run = this.data.runs.find((candidate) => candidate.id === runId);
 			if (!run) throw new Error(`Task run not found: ${runId}`);
 			if (run.status !== "running") {
@@ -785,10 +791,10 @@ export class PorcupineTaskStore {
 			} else if (status === "failed" && task.nextOnFail) {
 				this.enqueueChain(task.nextOnFail);
 			}
-			if ((status === "completed" || status === "failed") && this.taskRunResultNotifier) {
+			if (status === "completed" || status === "failed") {
 				const detail = status === "completed" ? (output.result ?? "") : (output.error ?? "");
 				const triggerType = run.trigger.type === "cron" ? "cron" : "manual";
-				this.taskRunResultNotifier({
+				notification = {
 					taskId: task.id,
 					runId: run.id,
 					title: task.title,
@@ -800,10 +806,19 @@ export class PorcupineTaskStore {
 						trigger: { type: triggerType },
 						detail,
 					}),
-				});
+				};
 			}
 			return run;
 		});
+		// Fan out the run-result notification only AFTER the terminal state is
+		// persisted, and swallow any throw so a failing notifier can never block
+		// (or corrupt) the store's save path. Fire-and-forget on the microtask queue.
+		if (notification && this.taskRunResultNotifier) {
+			void Promise.resolve()
+				.then(() => this.taskRunResultNotifier?.(notification!))
+				.catch(() => {});
+		}
+		return run;
 	}
 
 	createSchedule(input: { taskId: string; expression: string }): PorcupineCronSchedule {

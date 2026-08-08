@@ -298,10 +298,17 @@ export function createEmailClient(config: EmailConfig): EmailClient {
 				timeoutMs,
 				"IMAP read",
 				openImap(async (client) => {
-					// Try INBOX first, then All Mail (archived messages live there).
+					// Try INBOX first, then All Mail (archived messages live there). The
+					// All Mail fallback is Gmail-specific: non-Gmail providers usually don't
+					// have that folder, so skip it (rather than failing) when it is missing.
 					let seq: number | undefined;
 					for (const folder of ["INBOX", "[Gmail]/All Mail"]) {
-						await client.mailboxOpen(folder);
+						try {
+							await client.mailboxOpen(folder);
+						} catch (openError) {
+							if (folder === "[Gmail]/All Mail") continue;
+							throw openError;
+						}
 						seq = await sequenceOfUid(client, uid);
 						if (seq !== undefined) break;
 					}

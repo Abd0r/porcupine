@@ -375,141 +375,14 @@ export interface ToolsOptions {
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
-	switch (toolName) {
-		case "ask_question":
-			return createAskQuestionToolDefinition();
-		case "read":
-			return createReadToolDefinition(cwd, options?.read);
-		case "bash":
-			return createBashToolDefinition(cwd, options?.bash);
-		case "edit":
-			return createEditToolDefinition(cwd, options?.edit);
-		case "write":
-			return createWriteToolDefinition(cwd, options?.write);
-		case "grep":
-			return createGrepToolDefinition(cwd, options?.grep);
-		case "find":
-			return createFindToolDefinition(cwd, options?.find);
-		case "ls":
-			return createLsToolDefinition(cwd, options?.ls);
-		case "web_search":
-			return createWebSearchToolDefinition();
-		case "web_extract":
-			return createWebExtractToolDefinition();
-		case "computer_use":
-			return createComputerUseToolDefinition(options?.computer_use);
-		case "capability_search":
-			return createCapabilitySearchToolDefinition({
-				cwd,
-				...options?.capability_search,
-				getTools:
-					options?.capability_search?.getTools ?? (() => Object.values(createAllToolDefinitions(cwd, options))),
-			});
-		case "memory":
-			return createMemoryToolDefinition(options?.memory);
-		case "session_search":
-			return createSessionSearchToolDefinition({ cwd, ...options?.session_search });
-		case "tasks":
-			return createTasksToolDefinition(options?.tasks);
-		case "projects":
-			return createProjectsToolDefinition(options?.projects);
-		case "literature":
-			return createLiteratureToolDefinition(options?.literature);
-		case "show_markdown":
-			return createShowMarkdownToolDefinition(cwd);
-		case "x_search":
-			return createXSearchToolDefinition(options?.x);
-		case "x_read":
-			return createXReadToolDefinition(options?.x);
-		case "x_draft":
-			return createXDraftToolDefinition(options?.x);
-		case "x_post":
-			return createXPostToolDefinition(options?.x);
-		case "x_reply":
-			return createXReplyToolDefinition(options?.x);
-		case "email_list":
-			return createEmailListToolDefinition(options?.email);
-		case "email_read":
-			return createEmailReadToolDefinition(options?.email);
-		case "email_draft":
-			return createEmailDraftToolDefinition(options?.email);
-		case "email_send":
-			return createEmailSendToolDefinition(options?.email);
-		default:
-			throw new Error(`Unknown tool name: ${toolName}`);
-	}
+	const definition = createAllToolDefinitions(cwd, options)[toolName];
+	if (!definition) throw new Error(`Unknown tool name: ${toolName}`);
+	return definition;
 }
-
 export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptions): Tool {
-	switch (toolName) {
-		case "ask_question":
-			return createAskQuestionTool();
-		case "read":
-			return createReadTool(cwd, options?.read);
-		case "bash":
-			return createBashTool(cwd, options?.bash);
-		case "edit":
-			return createEditTool(cwd, options?.edit);
-		case "write":
-			return createWriteTool(cwd, options?.write);
-		case "grep":
-			return createGrepTool(cwd, options?.grep);
-		case "find":
-			return createFindTool(cwd, options?.find);
-		case "ls":
-			return createLsTool(cwd, options?.ls);
-		case "web_search":
-			return createWebSearchTool();
-		case "web_extract":
-			return createWebExtractTool();
-		case "computer_use":
-			return createComputerUseTool(options?.computer_use);
-		case "capability_search":
-			return createCapabilitySearchTool({
-				cwd,
-				...options?.capability_search,
-				getTools:
-					options?.capability_search?.getTools ?? (() => Object.values(createAllToolDefinitions(cwd, options))),
-			});
-		case "memory":
-			return createMemoryTool(options?.memory);
-		case "session_search":
-			return createSessionSearchTool({ cwd, ...options?.session_search });
-		case "show_markdown":
-			return createShowMarkdownTool(cwd);
-		case "x_search":
-			return createXSearchTool(options?.x);
-		case "x_read":
-			return createXReadTool(options?.x);
-		case "x_draft":
-			return createXDraftTool(options?.x);
-		case "x_post":
-			return createXPostTool(options?.x);
-		case "x_reply":
-			return createXReplyTool(options?.x);
-		case "email_list":
-			return createEmailListTool(options?.email);
-		case "email_read":
-			return createEmailReadTool(options?.email);
-		case "email_draft":
-			return createEmailDraftTool(options?.email);
-		case "email_send":
-			return createEmailSendTool(options?.email);
-		case "browser_navigate":
-			return createBrowserNavigateTool();
-		case "browser_click":
-			return createBrowserClickTool();
-		case "browser_type":
-			return createBrowserTypeTool();
-		case "browser_extract":
-			return createBrowserExtractTool();
-		case "browser_screenshot":
-			return createBrowserScreenshotTool();
-		case "browser_evaluate":
-			return createBrowserEvaluateTool();
-		default:
-			throw new Error(`Unknown tool name: ${toolName}`);
-	}
+	const tool = createAllTools(cwd, options)[toolName];
+	if (!tool) throw new Error(`Unknown tool name: ${toolName}`);
+	return tool;
 }
 
 function createCapabilityCatalogDefinition(cwd: string, options?: ToolsOptions): ToolDef {

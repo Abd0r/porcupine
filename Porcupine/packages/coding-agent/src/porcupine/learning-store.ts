@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { dirname, join } from "node:path";
 import { type ArtifactChange, describeArtifactChange, UserPatternLearningLoop } from "@porcupineai/agent-core";
 import { createNodeUserPatternLearningAdapters } from "@porcupineai/agent-core/node";
+import lockfile from "proper-lockfile";
 import { inferLearningStack } from "./capability-learning.ts";
 import { checkRollback, recordSkillUse } from "./evidence-counter.ts";
 import { extractUserPatternsHeuristic, memoryPath, mutateMemory, readMemoryFile } from "./memory-store.ts";
@@ -356,11 +357,25 @@ export function appendSkillLearningEntry(
 	const dir = join(agentDir, "skills", options.stack, options.id);
 	const path = join(dir, LEARNINGS_FILE);
 	const line = `- ${new Date().toISOString().slice(0, 10)}: [${options.kind ?? "skill"}/${options.stack}] ${options.summary}`;
-	const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-	if (existing.includes(line)) return undefined;
-	const header = existing.trim() ? `${existing.trimEnd()}\n\n` : "# Learnings\n\n";
-	atomicWrite(path, `${header}${line}\n`);
-	return path;
+	// Serialize the read-modify-write with a directory lock so concurrent
+	// sessions/processes appending to the same Learnings.md can't lose each
+	// other's entries (last-writer-wins on the full-file rewrite).
+	mkdirSync(dir, { recursive: true });
+	const release = lockfile.lockSync(dir, {
+		lockfilePath: join(dir, ".learning.lock"),
+		realpath: false,
+		retries: { retries: 0 },
+		stale: 30_000,
+	});
+	try {
+		const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+		if (existing.includes(line)) return undefined;
+		const header = existing.trim() ? `${existing.trimEnd()}\n\n` : "# Learnings\n\n";
+		atomicWrite(path, `${header}${line}\n`);
+		return path;
+	} finally {
+		release();
+	}
 }
 
 function buildSkillDraft(id: string, toolName: string, evidence: string[], stack: string): string {

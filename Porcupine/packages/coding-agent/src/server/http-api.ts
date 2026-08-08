@@ -181,7 +181,13 @@ export function createServeApi(options: ServeApiOptions): ServeApiHandle {
 
 			const permissionMatch = /^\/session\/([^/]+)\/permissions\/([^/]+)\/response$/.exec(path);
 			if (method === "POST" && permissionMatch && permissionMatch[1] === session.id) {
-				const permissionId = decodeURIComponent(permissionMatch[2]);
+				let permissionId: string;
+				try {
+					permissionId = decodeURIComponent(permissionMatch[2]);
+				} catch {
+					json(res, 400, { error: "malformed permission id" });
+					return;
+				}
 				const responder = permissionResponders.get(permissionId);
 				if (!responder) {
 					json(res, 404, { error: `no pending permission request "${permissionId}"` });

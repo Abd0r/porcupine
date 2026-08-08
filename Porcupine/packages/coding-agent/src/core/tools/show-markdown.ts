@@ -42,6 +42,12 @@ async function loadContent(
 	cwd: string,
 ): Promise<{ content: string; path?: string }> {
 	if (content !== undefined) {
+		const size = Buffer.byteLength(content, "utf8");
+		if (size > SHOW_MARKDOWN_MAX_BYTES) {
+			throw new Error(
+				`Content is ${size} bytes, exceeds the ${SHOW_MARKDOWN_MAX_BYTES / 1024}KB markdown viewer limit.`,
+			);
+		}
 		return { content };
 	}
 	if (path === undefined || path === "") {

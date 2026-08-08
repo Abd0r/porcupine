@@ -89,6 +89,15 @@ export class BrowserSession {
 			this.timeoutMs = timeoutMs;
 			return `Browser launched (${headless ? "headless" : "headed"}). ${this.status()}`;
 		} catch (err) {
+			// On partial-launch failure, close any browser/context created so far so
+			// nothing leaks before a later (re)tries launch.
+			if (this.page || this.context || this.browser) {
+				try {
+					await this.close();
+				} catch {
+					// The original launch error is what matters; a close failure is secondary.
+				}
+			}
 			return browserError("launch", err);
 		}
 	}
