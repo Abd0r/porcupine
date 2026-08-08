@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.1.56] - 2026-08-08
+
+### Fixed
+
+- Whole-codebase deep review: 5 HIGH + 13 MEDIUM findings fixed (27 total findings, all closed or documented).
+- Safety: `rm -f -r` / `rm --recursive --force` split/long-flag spellings no longer bypass the destructive-command guard (hardline in every mode).
+- Safety: `craft_skill`/`extract_skill` tool names are validated and echo fallbacks shell-quoted — no command injection via tool name.
+- Safety: terminal escape injection closed — control bytes are stripped from OSC 8 hyperlink URLs, HTML passthrough, and inline text.
+- Serve API: oversized bodies return a clean 413 instead of writing into a destroyed socket (EPIPE).
+- Sub-agents: an LLM/model error now fails the run (`ok:false` + error) instead of reporting success with an empty summary; the step budget is a hard cap — the over-budget tool call never executes.
+- Agent lifecycle: a throwing event listener can no longer fabricate a second `agent_end` failure event.
+- `/refresh` rebind: the replaced session's agent events are subscribed (generation-guarded against overlapping rebinds).
+- `/restart` preserves the original CLI configuration (provider, model, thinking, tools, approve, ...).
+- Cline: `CLINE_API_KEY` now works through the legacy compat stream path.
+- Codex SSE parser handles CRLF line endings and flushes the trailing buffer.
+- Discord confirmations are scoped to their message id; iMessage polls never overlap; console guard stays balanced.
+- Store locks retry instead of dropping writes (literature store); settings writes are atomic; secrets fallback is locked; client requests time out; TUI render errors are isolated; loader cleans up on teardown.
+- CLI args accept `--flag=value` and report invalid/missing values as errors.
+
+### Performance
+
+- Streaming markdown is re-parsed at most once per 120ms instead of on every token batch: 13x less parse work (measured 71ms to 5.3ms per typical stream), byte-identical output.
+
+
 ## [0.1.55] - 2026-08-08
 
 ### Security
