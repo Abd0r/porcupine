@@ -1,5 +1,5 @@
 /**
- * /email — JARVIS-style ambient awareness over IMAP/SMTP.
+ * /email — ambient email awareness over IMAP/SMTP.
  *
  * Provides the parse/build layer for the `/email` slash command (and is the
  * shared formatting core used by the email agent tools). It mirrors

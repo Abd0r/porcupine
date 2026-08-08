@@ -1,5 +1,5 @@
 /**
- * Email integration for Porcupine (JARVIS-style ambient awareness).
+ * Email integration for Porcupine (ambient email awareness).
  *
  * Universal IMAP/SMTP client built on `imapflow` and `nodemailer`, so it works
  * with Gmail, Outlook, and iCloud using an app password.

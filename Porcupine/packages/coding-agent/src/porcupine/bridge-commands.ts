@@ -1,5 +1,5 @@
 /**
- * Bridge command layer (JARVIS-style control surface) for the Porcupine chat
+ * Bridge command layer (remote control surface) for the Porcupine chat
  * bridges (Telegram / Discord / iMessage). Owner messages that start with a
  * '!' prefix are treated as control commands instead of normal session prompts:
  *
