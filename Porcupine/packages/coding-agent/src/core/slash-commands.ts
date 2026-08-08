@@ -48,6 +48,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "usage", description: "Show per-turn token usage and totals for this session" },
 	{ name: "cost", description: "Show estimated token cost for this session" },
 	{ name: "changelog", description: "Show changelog entries" },
+	{ name: "kill", description: "Instantly stop everything: the current run, bash, and sub-agents" },
 	{ name: "view", description: "Open a markdown file in the full-screen viewer", argumentHint: "<path>" },
 	{ name: "hotkeys", description: "Show all keyboard shortcuts" },
 	{

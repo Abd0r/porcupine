@@ -47,6 +47,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/session`                   | Show session file, ID, messages, tokens, and cost                          |
 | `/usage`                     | Per-turn token usage and totals for this session                           |
 | `/cost`                      | Estimated token cost for this session                                     |
+| `/kill`                    | Instantly stop everything: the current run, bash, and sub-agents |
 | `/view <path>`               | Open a markdown file in the full-screen viewer                            |
 | `/memory`                    | Show what Porcupine has stored about you and the environment              |
 | [`/extract-stack`](skill-crafting.md) | Distill a local document into a reusable skill/tool under the agent-home skills dir |

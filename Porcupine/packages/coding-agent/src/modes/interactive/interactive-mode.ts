@@ -3617,6 +3617,11 @@ export class InteractiveMode {
 				return;
 			}
 
+			if (text === "/kill") {
+				this.editor.setText("");
+				this.handleKillCommand();
+				return;
+			}
 			if (text.startsWith("/view ")) {
 				const viewPath = text.slice("/view ".length).trim();
 				this.editor.setText("");
@@ -6531,6 +6536,20 @@ export class InteractiveMode {
 	 * Show a markdown document as a full-screen overlay viewer.
 	 * Used both by the agent-initiated `show_markdown` tool and the `/view` command.
 	 */
+	/**
+	 * /kill — instant hard stop. No prompts, no negotiation: aborts the current
+	 * run, kills bash, cancels every sub-agent, and kills tracked children.
+	 */
+	private handleKillCommand(): void {
+		this.restoreQueuedMessagesToEditor({ abort: true });
+		void this.session.abort().catch(() => {});
+		this.session.abortBash();
+		this.session.cancelAllSubagents();
+		killTrackedDetachedChildren();
+		this.ui.setFocus(this.editor as Component);
+		this.showStatus("⏹ Killed: run, bash, and sub-agents stopped");
+	}
+
 	private showMarkdownViewer(entry: { title: string; content: string; path?: string }): void {
 		if (this.ui.hasOverlay()) {
 			this.showWarning("Another dialog is already open.");
